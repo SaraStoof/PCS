@@ -8,9 +8,9 @@ import pyvista as pv
 import plotly.graph_objects as go
 
 # Constants
-GRID_SIZE = 1000
+GRID_SIZE = 100
 RADIUS = (GRID_SIZE // 2 ) + 5 # Radius of the circle
-SEED = (GRID_SIZE // 2, GRID_SIZE // 2, GRID_SIZE // 2)  # Seed in the middle of the grid
+SEED = (GRID_SIZE // 2, GRID_SIZE // 2, GRID_SIZE)  # Seed in the middle of the grid
 center_index = GRID_SIZE // 2
 # Initialize grid (plus 1 to account for 0-index)
 grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
@@ -21,7 +21,8 @@ def particle_loop(GRID_SIZE, RADIUS, grid):
     touches_furthest_radius = False
     current_radius = 5 #spawns particles closer to where the seed is, to speed up the program. 
     particle_count = 0
-    while touches_furthest_radius == False and particle_count < 1500:  #keeps going until a particle touches the radius of the circle while being attached to the body
+    # and particle_count < 1500
+    while touches_furthest_radius == False:  #keeps going until a particle touches the radius of the circle while being attached to the body
     # Create the particle starting from a random point on the circle
     
 #         http://datagenetics.com/blog/january32020/index.html
@@ -81,7 +82,7 @@ x, y, z = np.where(grid == 1)
 # Plot the 3D grid
 fig = plt.figure(figsize=(8, 6))
 ax = fig.add_subplot(111, projection='3d')
-scatter = ax.scatter(x, y, z, c='blue', s=200, marker='s')
+scatter = ax.scatter(x, y, z, c='blue', s=GRID_SIZE//5, marker='s', linewidth=0)
 # Set plot labels
 ax.set_title("3D Particle Growth")
 ax.set_xlabel('X')
