@@ -3,7 +3,7 @@ from numba import njit
 import matplotlib.pyplot as plt 
 
 # OPTIMILIZATIONS: - dits to seed
-#                   - vagere kleur voor lagere gemiddeldes
+#                   
 
 # Constants
 GRID_SIZE = 100
@@ -48,6 +48,52 @@ def attaching_prob(Temp, RH):
 def coverage_to_m_value(cov): 
     return 14.87349 + (-0.03030586 - 14.87349)/(1 + (cov/271.0396)**0.4418942)
 
+ATTACH_PROB = attaching_prob(Temp, RH)
+DECAY_PROB = (1 - ATTACH_PROB) * 0.01
+
+
+@njit
+def decay_grid(grid):
+    decay_amount = 0
+    sum_grid = int(np.sum(grid))
+    for _ in range(sum_grid):
+        if np.random.uniform() < DECAY_PROB:
+            decay_amount += 1
+    if decay_amount == 0:
+        return
+    # find middle point
+    sum_grid = int(np.sum(grid))
+    coords = np.zeros((sum_grid, 3))
+    idx = 0
+    x_avg = 0
+    y_avg = 0
+    z_avg = 0
+    for x in range(grid.shape[0]):
+        for y in range(grid.shape[1]):
+            for z in range(grid.shape[2]):
+                if grid[x, y, z] == 1:
+                    coords[idx] = np.array((x, y, z), dtype=np.int32)
+                    x_avg += x
+                    y_avg += y
+                    z_avg += z
+                    idx += 1
+
+    x_avg /= idx
+    y_avg /= idx
+    z_avg /= idx
+    middle = (x_avg, y_avg, z_avg)
+    
+    # keep removing furthest point from middle point
+    distances = np.zeros(coords.shape[0])
+    for i in range(coords.shape[0]):
+        distances[i] = np.sqrt((coords[i][0] - middle[0]) ** 2 + (coords[i][1] - middle[1]) ** 2 + (coords[i][2] - middle[2]) ** 2)
+    for _ in range(decay_amount):
+        idx = np.argmax(distances)
+        furthest = coords[idx]
+        grid[int(furthest[0]), int(furthest[1]), int(furthest[2])] = 0
+        distances[idx] = -1
+
+
 @njit
 def in_bounds_mask(particles):
     return (
@@ -82,8 +128,6 @@ def in_bounds(particles, radius):
 @njit
 def move(particles):
     return particles + np.random.randint(-1, 2, (len(particles), 3))
-
-ATTACH_PROB = attaching_prob(Temp, RH)
 
 
 @njit
@@ -143,10 +187,13 @@ def particle_loop(grid, batch_size=1000):
     current_radius = 5 #spawns particles closer to where the seed is, to speed up the program. 
     particle_count = 0
 
-    for _ in range(TIMESTEPS):  #keeps going until a particle touches the radius of the circle while being attached to the body
+    for i in range(TIMESTEPS):  #keeps going until a particle touches the radius of the circle while being attached to the body
     # Create the particle starting from a random point on the circle
     
     # http://datagenetics.com/blog/january32020/index.html
+
+        if i % 10 == 0:
+            decay_grid(grid)
 
         theta = np.random.uniform(0, 2 * np.pi, batch_size)
         phi = np.random.uniform(0, np.pi, batch_size)
@@ -214,12 +261,13 @@ def monte_carlo():
     mold_grid[ mold_grid > 0.02 ] = 1
     
     mold_cov_3d = np.mean(mold_grid) * 100
-    print("SUM GRID", np.sum(mold_grid))
     mold_cov_surface = np.mean(mold_grid[:,center_index,:]) * 100
 
     return aggr_grid, mold_cov_3d, mold_cov_surface
 
 final_grid, mold_cov_3d, mold_cov_surface = monte_carlo()
+print("attach_prob:" , ATTACH_PROB)
+print("decay_prob: ", DECAY_PROB)
 print("Average mold coverage: ", mold_cov_3d , "%")
 print("M-value: ", coverage_to_m_value(mold_cov_3d))
 print("Average mold coverage surface: ", mold_cov_surface , "%")
