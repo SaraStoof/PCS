@@ -2,7 +2,6 @@ import numpy as np
 from numba import njit
 import matplotlib.pyplot as plt
 
-# OPTIMILIZATIONS: - dist to seed
 
 # Constants
 GRID_SIZE = 100
@@ -156,7 +155,12 @@ def check_neighbor(particles, grid, batch_size):
     for idx, neighbor in enumerate(valid_neighbors):
         x, y, z = int(neighbor[0]), int(neighbor[1]), int(neighbor[2])
         if grid[x, y, z] == 1:
-            if np.random.uniform() < ATTACH_PROB:
+
+            depth = np.abs(z - GRID_SIZE)  # Assuming surface_z defines surface height
+            depth_bias_rate = 0.5
+            depth_bias = np.exp(-depth_bias_rate * depth)
+
+            if np.random.uniform() < ATTACH_PROB + depth_bias:
                 # Track original particle indices
                 hits_indices.append(original_indices[idx])
 
@@ -186,6 +190,9 @@ def particle_loop(grid, batch_size=1000):
         # http://datagenetics.com/blog/january32020/index.html
 
         theta = np.random.uniform(0, np.pi * 2, batch_size)
+        bias_strength = 5
+        u = np.random.uniform(0, 1, batch_size)
+        phi = np.arccos(1 - (1 - np.cos(np.pi / 2)) * u**bias_strength)
         phi = np.random.uniform(np.pi / 2, np.pi, batch_size)
 
         # Initialize an empty array to hold the particle coordinates
@@ -202,6 +209,11 @@ def particle_loop(grid, batch_size=1000):
             particle[:, 0] = (np.random.randint(0, GRID_SIZE, batch_size))
             particle[:, 1] = (np.random.randint(0, GRID_SIZE, batch_size))
             particle[:, 2] = (np.random.randint(0, GRID_SIZE, batch_size))
+
+        # for p in particle:
+        #     print(p)
+        #     x, y, z = int(p[0]), int(p[1]), int(p[2])
+        #     grid[x, y, z] = 1
 
         particle = np.floor(particle)
         particle_count += batch_size
@@ -262,6 +274,10 @@ print("Average mold coverage surface: ", mold_cov_surface, "%")
 print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
 print("Temperature: ", Temp)
 print("Relative Humidity: ", RH)
+
+# final_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
+# final_grid[center_index, center_index, GRID_SIZE - 1] = 1
+# particle_loop(final_grid)
 
 # Plot the middle slice of the mold.
 plt.imshow(final_grid[:, :, GRID_SIZE - 1], cmap='Greens', interpolation='nearest')
