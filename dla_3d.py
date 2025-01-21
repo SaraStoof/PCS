@@ -102,9 +102,9 @@ def decay_grid(grid):
 @njit
 def in_bounds_neighbors(particles):
     return (
-        (particles[:, 0] >= 0) & (particles[:, 0] < GRID_SIZE) &
-        (particles[:, 1] >= 0) & (particles[:, 1] < GRID_SIZE) &
-        (particles[:, 2] >= 0) & (particles[:, 2] < GRID_SIZE)
+        (particles[:, 0] >= 0) & (particles[:, 0] <= GRID_SIZE) &
+        (particles[:, 1] >= 0) & (particles[:, 1] <= GRID_SIZE) &
+        (particles[:, 2] >= 0) & (particles[:, 2] <= GRID_SIZE)
     )
 
 
@@ -127,12 +127,14 @@ def in_bounds(particles, radius):
     return particles[
         (particles[:, 0] >= center_index - radius) & (particles[:, 0] < center_index + radius) &
         (particles[:, 1] >= center_index - radius) & (particles[:, 1] < center_index + radius) &
-        (particles[:, 2] >= GRID_SIZE - radius) & (particles[:, 2] < GRID_SIZE)
+        (particles[:, 2] >= GRID_SIZE - radius) & (particles[:, 2] <= GRID_SIZE)
     ]
 
 
 @njit
 def move(particles):
+    # Should the random direction not also have a depth bias?
+
     return particles + np.random.randint(-1, 2, (len(particles), 3))
 
 
@@ -156,7 +158,7 @@ def check_neighbor(particles, grid, batch_size):
         x, y, z = int(neighbor[0]), int(neighbor[1]), int(neighbor[2])
         if grid[x, y, z] == 1:
 
-            depth = np.abs(z - GRID_SIZE)  # Assuming surface_z defines surface height
+            depth = GRID_SIZE - z
             depth_bias_rate = 0.5
             depth_bias = np.exp(-depth_bias_rate * depth)
 
@@ -180,6 +182,8 @@ def particle_loop(grid, batch_size=1000):
     current_radius = 5
     particle_count = 0
 
+    time_step = 0
+
     # keeps going until a particle touches the radius of the circle while being attached to the body
     for i in range(TIMESTEPS):
         # Create the particle starting from a random point on the circle
@@ -189,11 +193,14 @@ def particle_loop(grid, batch_size=1000):
 
         # http://datagenetics.com/blog/january32020/index.html
 
+        # Theta is the angle in the x-y plane
+        # Phi is the angle from the z-axis
         theta = np.random.uniform(0, np.pi * 2, batch_size)
         bias_strength = 5
         u = np.random.uniform(0, 1, batch_size)
-        phi = np.arccos(1 - (1 - np.cos(np.pi / 2)) * u**bias_strength)
-        phi = np.random.uniform(np.pi / 2, np.pi, batch_size)
+        # phi = np.arccos(1 - (1 - np.cos(np.pi / 2)) * u**bias_strength)
+        # phi = np.random.uniform(np.pi / 2, np.pi, batch_size)
+        phi = np.random.uniform(np.pi, 2 * np.pi, batch_size)
 
         # Initialize an empty array to hold the particle coordinates
         particle = np.zeros((batch_size, 3))
@@ -204,7 +211,9 @@ def particle_loop(grid, batch_size=1000):
                               np.sin(phi) * np.cos(theta))
             particle[:, 1] = (GRID_SIZE / 2 + current_radius *
                               np.sin(phi) * np.sin(theta))
-            particle[:, 2] = (GRID_SIZE - np.abs(current_radius * np.cos(phi)))
+            particle[:, 2] = (GRID_SIZE + 1 - np.abs(current_radius * np.cos(phi)))
+            print(np.where(particle[:, 2] > GRID_SIZE))  # het spawnet dus wel op de top layer, mr niet veel per batch
+
         else:
             particle[:, 0] = (np.random.randint(0, GRID_SIZE, batch_size))
             particle[:, 1] = (np.random.randint(0, GRID_SIZE, batch_size))
@@ -237,6 +246,7 @@ def particle_loop(grid, batch_size=1000):
                 if dist_to_seed >= current_radius - 1 and reached_edge == False:
                     current_radius += 5
                     if current_radius > RADIUS:
+                        print("Reached edge")
                         reached_edge = True
 
             # Remove particles that already attached themselves to the cluster
@@ -250,7 +260,7 @@ def monte_carlo():
     for _ in range(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-        grid[center_index, center_index, GRID_SIZE - 1] = 1
+        grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
         particle_loop(grid)
 
         aggr_grid += grid
@@ -266,6 +276,44 @@ def monte_carlo():
 
 
 final_grid, mold_cov_3d, mold_cov_surface = monte_carlo()
+
+#--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
+
+def check_layer(grid, layer):
+    count = 0
+    for x in range(grid.shape[0]):
+        for y in range(grid.shape[1]):
+            if grid[x, y, layer] > 0:
+                count += 1
+    return count
+
+def check_grid(grid):
+    layer_counts = []
+    for z in range(grid.shape[2]):
+        print("Layer", z, ":", check_layer(grid, z))
+        # Add to array
+        layer_counts.append(check_layer(grid, z))
+    return layer_counts
+
+
+grid_layer_counts = check_grid(final_grid)
+print(np.sum(grid_layer_counts))
+
+# Save to .txt file for analysis
+with open("layer_counts.txt", "w") as f:
+    for count in grid_layer_counts:
+        f.write(str(count) + "\n")
+
+# visualize grid_layer_counts in a plot
+plt.plot(grid_layer_counts)
+plt.xlabel("Layer")
+plt.ylabel("Number of particles")
+plt.title("Number of particles per layer")
+plt.show()
+
+# -------------------------------------------------------
+
+
 print("attach_prob:", ATTACH_PROB)
 print("decay_prob: ", DECAY_PROB)
 print("Average mold coverage: ", mold_cov_3d, "%")
@@ -279,8 +327,8 @@ print("Relative Humidity: ", RH)
 # final_grid[center_index, center_index, GRID_SIZE - 1] = 1
 # particle_loop(final_grid)
 
-# Plot the middle slice of the mold.
-plt.imshow(final_grid[:, :, GRID_SIZE - 1], cmap='Greens', interpolation='nearest')
+# Plot the upper slice of the mold.
+plt.imshow(final_grid[:, :, GRID_SIZE], cmap='Greens', interpolation='nearest')
 plt.show()
 
 x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
