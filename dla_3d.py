@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit
+from numba import njit, prange
 import matplotlib.pyplot as plt
 
 
@@ -56,11 +56,11 @@ ATTACH_PROB = attaching_prob(Temp, RH)
 DECAY_PROB = (1 - ATTACH_PROB) * 0.01
 
 
-@njit
+@njit(parallel=True)
 def decay_grid(grid):
     decay_amount = 0
     sum_grid = int(np.sum(grid))
-    for _ in range(sum_grid):
+    for _ in prange(sum_grid):
         if np.random.uniform() < DECAY_PROB:
             decay_amount += 1
     if decay_amount == 0:
@@ -89,7 +89,7 @@ def decay_grid(grid):
 
     # keep removing furthest point from middle point
     distances = np.zeros(coords.shape[0])
-    for i in range(coords.shape[0]):
+    for i in prange(coords.shape[0]):
         distances[i] = np.sqrt((coords[i][0] - middle[0]) ** 2 +
                                (coords[i][1] - middle[1]) ** 2 + (coords[i][2] - middle[2]) ** 2)
     for _ in range(decay_amount):
@@ -265,10 +265,10 @@ def particle_loop(grid, batch_size=1000):
 
     return
 
-
+@njit(parallel=True)
 def monte_carlo():
     aggr_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-    for _ in range(NUM_SIMS):
+    for _ in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
         grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
@@ -277,17 +277,17 @@ def monte_carlo():
         aggr_grid += grid
 
     aggr_grid = aggr_grid/NUM_SIMS
-    mold_grid = aggr_grid.copy()
-    mold_grid[mold_grid > 0.02] = 1
 
-    mold_cov_3d = np.mean(mold_grid) * 100
-    mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100  # !!!
-
-    return aggr_grid, mold_cov_3d, mold_cov_surface
+    return aggr_grid
 
 
-final_grid, mold_cov_3d, mold_cov_surface = monte_carlo()
+final_grid = monte_carlo()
 
+mold_grid = final_grid.copy()
+mold_grid[mold_grid > 0.02] = 1
+
+mold_cov_3d = np.mean(mold_grid) * 100
+mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100  # !!!
 #--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
 
 def check_layer(grid, layer):
