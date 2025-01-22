@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 GRID_SIZE = 100
 RADIUS = (GRID_SIZE // 2) + 5  # Radius of the circle
 center_index = GRID_SIZE // 2
-TIMESTEPS = 1000
-NUM_SIMS = 10
+TIMESTEPS = 100
+NUM_SIMS = 5
 Temp = 30
 RH = 97
 
@@ -54,7 +54,7 @@ def coverage_to_m_value(cov):
 
 
 ATTACH_PROB = attaching_prob(Temp, RH)
-DECAY_PROB = 1 - ATTACH_PROB
+DECAY_PROB = (1 - ATTACH_PROB) * 0.01
 
 
 @njit(parallel=True)
