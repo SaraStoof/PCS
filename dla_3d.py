@@ -1,5 +1,5 @@
 import numpy as np
-from numba import njit, prange
+# from numba import njit, prange
 import matplotlib.pyplot as plt
 import time
 import sys
@@ -27,7 +27,7 @@ neighbor_offsets = np.array([
 ])
 
 
-@njit
+# @njit
 def attaching_prob(Temp, RH):
     RH_crit = (-0.00267 * (Temp**3)) + (0.16*(Temp**2)) - (3.13*Temp) + 100
     if(RH < RH_crit):
@@ -58,11 +58,11 @@ DECAY_PROB = (1 - ATTACH_PROB) * 0.01
 def coverage_to_m_value(cov):
     return 14.87349 + (-0.03030586 - 14.87349)/(1 + (cov/271.0396)**0.4418942)
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def decay_grid(grid):
     decay_amount = 0
     sum_grid = int(np.sum(grid))
-    for _ in prange(sum_grid):
+    for _ in range(sum_grid):
         if np.random.uniform() < DECAY_PROB:
             decay_amount += 1
     if decay_amount == 0:
@@ -91,7 +91,7 @@ def decay_grid(grid):
 
     # keep removing furthest point from middle point
     distances = np.zeros(coords.shape[0])
-    for i in prange(coords.shape[0]):
+    for i in range(coords.shape[0]):
         distances[i] = np.sqrt((coords[i][0] - middle[0]) ** 2 +
                                (coords[i][1] - middle[1]) ** 2 + (coords[i][2] - middle[2]) ** 2)
     for _ in range(decay_amount):
@@ -101,7 +101,7 @@ def decay_grid(grid):
         distances[idx] = -1
 
 
-@njit
+# @njit
 def in_bounds_neighbors(particles):
     return (
         (particles[:, 0] >= 0) & (particles[:, 0] <= GRID_SIZE) &
@@ -110,7 +110,7 @@ def in_bounds_neighbors(particles):
     )
 
 
-@njit
+# @njit
 def remove_indices(arr, indices_to_remove):
     # Create a mask to keep all elements by default
     mask = np.ones(len(arr), dtype=np.bool_)
@@ -123,7 +123,7 @@ def remove_indices(arr, indices_to_remove):
     return arr[mask]
 
 
-@njit
+# @njit
 def in_bounds(particles, radius):
     # if dist_to_seed >= radius + 5:
     return particles[
@@ -133,12 +133,12 @@ def in_bounds(particles, radius):
     ]
 
 
-@njit
+# @njit
 def move(particles):
     return particles + np.random.randint(-1, 2, (len(particles), 3))
 
 
-@njit
+# @njit
 def check_neighbor(particles, grid, batch_size):
 
     # numpy broadcasting
@@ -175,7 +175,7 @@ def check_neighbor(particles, grid, batch_size):
 
     return hits, p_indices
 
-@njit
+# @njit
 def nonneg_arr(arr):
     # Flattens all negative values to 0. Makes the array nonnegative.
     arr[np.where(arr < 0.0)] = 0
@@ -183,7 +183,7 @@ def nonneg_arr(arr):
 
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
-@njit
+# @njit
 def particle_loop(grid, batch_size=1000):
 
     reached_edge = False
@@ -264,11 +264,11 @@ def particle_loop(grid, batch_size=1000):
 
     return
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def monte_carlo():
     
     aggr_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-    for _ in prange(NUM_SIMS):
+    for _ in range(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
         grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
