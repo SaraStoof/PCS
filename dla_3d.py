@@ -133,8 +133,6 @@ def in_bounds(particles, radius):
 
 @njit
 def move(particles):
-    # Should the random direction not also have a depth bias?
-
     return particles + np.random.randint(-1, 2, (len(particles), 3))
 
 
@@ -195,8 +193,7 @@ def particle_loop(grid, batch_size=1000):
     for i in range(TIMESTEPS):
         # Create the particle starting from a random point on the circle
 
-        # print("New batch")
-        if i % 10 == 0:
+        if i % int(TIMESTEPS*0.05) == 0:
             decay_grid(grid)
 
         # http://datagenetics.com/blog/january32020/index.html
@@ -277,17 +274,14 @@ def monte_carlo():
         aggr_grid += grid
 
     aggr_grid = aggr_grid/NUM_SIMS
-
     return aggr_grid
 
-
 final_grid = monte_carlo()
-
 mold_grid = final_grid.copy()
 mold_grid[mold_grid > 0.02] = 1
 
 mold_cov_3d = np.mean(mold_grid) * 100
-mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100  # !!!
+mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
 #--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
 
 def check_layer(grid, layer):
