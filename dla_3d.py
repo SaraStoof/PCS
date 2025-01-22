@@ -303,11 +303,6 @@ def check_grid(grid):
 grid_layer_counts = check_grid(final_grid)
 print(np.sum(grid_layer_counts))
 
-# Save to .txt file for analysis
-with open("layer_counts.txt", "w") as f:
-    for count in grid_layer_counts:
-        f.write(str(count) + "\n")
-
 # visualize grid_layer_counts in a plot
 plt.plot(grid_layer_counts)
 plt.xlabel("Layer")
