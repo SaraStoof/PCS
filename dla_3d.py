@@ -176,12 +176,9 @@ def check_neighbor(particles, grid, batch_size):
     return hits, p_indices
 
 @njit
-def min_helper(arr):
-    # print(arr[:10])
-    # Flattens all positive values to 0, so we are left with an array of
-    # only zeros and negative values
+def nonneg_arr(arr):
+    # Flattens all negative values to 0. Makes the array nonnegative.
     arr[np.where(arr < 0.0)] = 0
-    # print(arr[:10])
     return arr
 
 
@@ -198,7 +195,7 @@ def particle_loop(grid, batch_size=1000):
     for i in range(TIMESTEPS):
         # Create the particle starting from a random point on the circle
 
-        print("New batch")
+        # print("New batch")
         if i % 10 == 0:
             decay_grid(grid)
 
@@ -207,10 +204,6 @@ def particle_loop(grid, batch_size=1000):
         # Theta is the angle in the x-y plane
         # Phi is the angle from the z-axis
         theta = np.random.uniform(0, np.pi * 2, batch_size)
-        bias_strength = 5
-        u = np.random.uniform(0, 1, batch_size)
-        # phi = np.arccos(1 - (1 - np.cos(np.pi / 2)) * u**bias_strength)
-        # phi = np.random.uniform(np.pi / 2, np.pi, batch_size)
         phi = np.random.uniform(np.pi, 2 * np.pi, batch_size)
 
         # Initialize an empty array to hold the particle coordinates
@@ -223,7 +216,7 @@ def particle_loop(grid, batch_size=1000):
             particle[:, 1] = (center_index + current_radius *
                               np.sin(phi) * np.sin(theta))
             particle[:, 2] = (GRID_SIZE -
-                              min_helper(current_radius * np.cos(phi)))
+                              nonneg_arr(current_radius * np.cos(phi)))
 
         else:
             particle[:, 0] = (np.random.randint(0, GRID_SIZE, batch_size))
@@ -237,7 +230,8 @@ def particle_loop(grid, batch_size=1000):
         particle_count += len(particle)
 
         particle = in_bounds(particle, current_radius)
-        print(len(particle[:, 2]), len(np.where(particle[:, 2] >= GRID_SIZE)[0]))  # het spawnet dus wel op de top layer, mr niet veel per batch
+
+        no_hits_count = 0
 
         while len(particle) > 0:
 
@@ -247,6 +241,14 @@ def particle_loop(grid, batch_size=1000):
 
             # check neighbors and update grid
             hits, p_indices = check_neighbor(particle, grid, batch_size)
+
+            # Break if particles have moved five turns with no hits.
+            if len(hits) == 0:
+                no_hits_count += 1
+                if no_hits_count > 5:
+                    break
+            else:
+                no_hits_count = 0
 
             # Update grid
             for hit in hits:
@@ -300,7 +302,6 @@ def check_grid(grid):
     layer_counts = []
     for z in range(grid.shape[2]):
         print("Layer", z, ":", check_layer(grid, z))
-        # Add to array
         layer_counts.append(check_layer(grid, z))
     return layer_counts
 
