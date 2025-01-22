@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 # Constants
 GRID_SIZE = 100
-RADIUS = (GRID_SIZE // 2) + 5  # Radius of the circle
+RADIUS = (GRID_SIZE // 2) + 5  # Maximum radius of the circle
 center_index = GRID_SIZE // 2
 TIMESTEPS = 120
 NUM_SIMS = 5
@@ -140,6 +140,7 @@ def move(particles):
 
 @njit
 def check_neighbor(particles, grid, batch_size):
+
     # numpy broadcasting
     neighbors = particles[:, None, :] + neighbor_offsets[None, :, :]
     neighbors = neighbors.reshape(-1, 3)
@@ -159,10 +160,12 @@ def check_neighbor(particles, grid, batch_size):
         if grid[x, y, z] == 1:
 
             depth = GRID_SIZE - z
-            depth_bias_rate = 0.5
+            depth_bias_rate = 0.05
             depth_bias = np.exp(-depth_bias_rate * depth)
+            # print("z:", z, "depth:", depth, "depth_bias:", depth_bias)
 
             if np.random.uniform() < ATTACH_PROB + depth_bias:
+                # print("Attached")
                 # Track original particle indices
                 hits_indices.append(original_indices[idx])
 
@@ -171,6 +174,15 @@ def check_neighbor(particles, grid, batch_size):
     p_indices = [i // 6 for i in hits_indices]
 
     return hits, p_indices
+
+@njit
+def min_helper(arr):
+    # print(arr[:10])
+    # Flattens all positive values to 0, so we are left with an array of
+    # only zeros and negative values
+    arr[np.where(arr < 0.0)] = 0
+    # print(arr[:10])
+    return arr
 
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
@@ -182,12 +194,11 @@ def particle_loop(grid, batch_size=1000):
     current_radius = 5
     particle_count = 0
 
-    time_step = 0
-
     # keeps going until a particle touches the radius of the circle while being attached to the body
     for i in range(TIMESTEPS):
         # Create the particle starting from a random point on the circle
 
+        print("New batch")
         if i % 10 == 0:
             decay_grid(grid)
 
@@ -207,27 +218,26 @@ def particle_loop(grid, batch_size=1000):
 
         if reached_edge == False:
             # Populate the particle array manually
-            particle[:, 0] = (GRID_SIZE / 2 + current_radius *
+            particle[:, 0] = (center_index + current_radius *
                               np.sin(phi) * np.cos(theta))
-            particle[:, 1] = (GRID_SIZE / 2 + current_radius *
+            particle[:, 1] = (center_index + current_radius *
                               np.sin(phi) * np.sin(theta))
-            particle[:, 2] = (GRID_SIZE + 1 - np.abs(current_radius * np.cos(phi)))
-            print(np.where(particle[:, 2] > GRID_SIZE))  # het spawnet dus wel op de top layer, mr niet veel per batch
+            particle[:, 2] = (GRID_SIZE -
+                              min_helper(current_radius * np.cos(phi)))
 
         else:
             particle[:, 0] = (np.random.randint(0, GRID_SIZE, batch_size))
             particle[:, 1] = (np.random.randint(0, GRID_SIZE, batch_size))
             particle[:, 2] = (np.random.randint(0, GRID_SIZE, batch_size))
 
-        # for p in particle:
-        #     print(p)
-        #     x, y, z = int(p[0]), int(p[1]), int(p[2])
-        #     grid[x, y, z] = 1
+        if len(particle) > current_radius**3:
+            particle = particle[:current_radius**3]
 
         particle = np.floor(particle)
-        particle_count += batch_size
+        particle_count += len(particle)
 
         particle = in_bounds(particle, current_radius)
+        print(len(particle[:, 2]), len(np.where(particle[:, 2] >= GRID_SIZE)[0]))  # het spawnet dus wel op de top layer, mr niet veel per batch
 
         while len(particle) > 0:
 
@@ -242,11 +252,10 @@ def particle_loop(grid, batch_size=1000):
             for hit in hits:
                 x, y, z = int(hit[0]), int(hit[1]), int(hit[2])
                 grid[x, y, z] = 1
-                dist_to_seed = np.linalg.norm(hit - center_index)
+                dist_to_seed = np.linalg.norm(hit - np.array([center_index, center_index, GRID_SIZE]))
                 if dist_to_seed >= current_radius - 1 and reached_edge == False:
                     current_radius += 5
-                    if current_radius > RADIUS:
-                        print("Reached edge")
+                    if current_radius >= RADIUS:
                         reached_edge = True
 
             # Remove particles that already attached themselves to the cluster
@@ -270,7 +279,7 @@ def monte_carlo():
     mold_grid[mold_grid > 0.02] = 1
 
     mold_cov_3d = np.mean(mold_grid) * 100
-    mold_cov_surface = np.mean(mold_grid[:, center_index, :]) * 100
+    mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100  # !!!
 
     return aggr_grid, mold_cov_3d, mold_cov_surface
 
