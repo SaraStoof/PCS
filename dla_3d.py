@@ -1,7 +1,8 @@
 import numpy as np
-from numba import njit, prange
+# from numba import njit, prange
 import matplotlib.pyplot as plt
-
+import time
+import sys
 
 # Constants
 GRID_SIZE = 100
@@ -11,6 +12,9 @@ TIMESTEPS = 120
 NUM_SIMS = 5
 Temp = 30
 RH = 97
+BATCH_SIZE = 1000
+NO_HITS_MAX = 5
+
 
 # Initialize grid (plus 1 to account for 0-index)
 # grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
@@ -23,7 +27,7 @@ neighbor_offsets = np.array([
 ])
 
 
-@njit
+# @njit
 def attaching_prob(Temp, RH):
     RH_crit = (-0.00267 * (Temp**3)) + (0.16*(Temp**2)) - (3.13*Temp) + 100
     if(RH < RH_crit):
@@ -47,20 +51,18 @@ def attaching_prob(Temp, RH):
         return 1
     return area_covered/500
 
-
-def coverage_to_m_value(cov):
-    return 14.87349 + (-0.03030586 - 14.87349)/(1 + (cov/271.0396)**0.4418942)
-
-
 ATTACH_PROB = attaching_prob(Temp, RH)
 DECAY_PROB = (1 - ATTACH_PROB) * 0.01
 
 
-@njit(parallel=True)
+def coverage_to_m_value(cov):
+    return 14.87349 + (-0.03030586 - 14.87349)/(1 + (cov/271.0396)**0.4418942)
+
+# @njit(parallel=True)
 def decay_grid(grid):
     decay_amount = 0
     sum_grid = int(np.sum(grid))
-    for _ in prange(sum_grid):
+    for _ in range(sum_grid):
         if np.random.uniform() < DECAY_PROB:
             decay_amount += 1
     if decay_amount == 0:
@@ -89,7 +91,7 @@ def decay_grid(grid):
 
     # keep removing furthest point from middle point
     distances = np.zeros(coords.shape[0])
-    for i in prange(coords.shape[0]):
+    for i in range(coords.shape[0]):
         distances[i] = np.sqrt((coords[i][0] - middle[0]) ** 2 +
                                (coords[i][1] - middle[1]) ** 2 + (coords[i][2] - middle[2]) ** 2)
     for _ in range(decay_amount):
@@ -99,7 +101,7 @@ def decay_grid(grid):
         distances[idx] = -1
 
 
-@njit
+# @njit
 def in_bounds_neighbors(particles):
     return (
         (particles[:, 0] >= 0) & (particles[:, 0] <= GRID_SIZE) &
@@ -108,7 +110,7 @@ def in_bounds_neighbors(particles):
     )
 
 
-@njit
+# @njit
 def remove_indices(arr, indices_to_remove):
     # Create a mask to keep all elements by default
     mask = np.ones(len(arr), dtype=np.bool_)
@@ -121,7 +123,7 @@ def remove_indices(arr, indices_to_remove):
     return arr[mask]
 
 
-@njit
+# @njit
 def in_bounds(particles, radius):
     # if dist_to_seed >= radius + 5:
     return particles[
@@ -131,12 +133,12 @@ def in_bounds(particles, radius):
     ]
 
 
-@njit
+# @njit
 def move(particles):
     return particles + np.random.randint(-1, 2, (len(particles), 3))
 
 
-@njit
+# @njit
 def check_neighbor(particles, grid, batch_size):
 
     # numpy broadcasting
@@ -173,7 +175,7 @@ def check_neighbor(particles, grid, batch_size):
 
     return hits, p_indices
 
-@njit
+# @njit
 def nonneg_arr(arr):
     # Flattens all negative values to 0. Makes the array nonnegative.
     arr[np.where(arr < 0.0)] = 0
@@ -181,7 +183,7 @@ def nonneg_arr(arr):
 
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
-@njit
+# @njit
 def particle_loop(grid, batch_size=1000):
 
     reached_edge = False
@@ -242,7 +244,7 @@ def particle_loop(grid, batch_size=1000):
             # Break if particles have moved five turns with no hits.
             if len(hits) == 0:
                 no_hits_count += 1
-                if no_hits_count > 5:
+                if no_hits_count > NO_HITS_MAX:
                     break
             else:
                 no_hits_count = 0
@@ -262,27 +264,20 @@ def particle_loop(grid, batch_size=1000):
 
     return
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def monte_carlo():
+    
     aggr_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-    for _ in prange(NUM_SIMS):
+    for _ in range(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
         grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
-        particle_loop(grid)
+        particle_loop(grid, BATCH_SIZE)
 
         aggr_grid += grid
 
     aggr_grid = aggr_grid/NUM_SIMS
     return aggr_grid
-
-final_grid = monte_carlo()
-mold_grid = final_grid.copy()
-mold_grid[mold_grid > 0.02] = 1
-
-mold_cov_3d = np.mean(mold_grid) * 100
-mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
-#--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
 
 def check_layer(grid, layer):
     count = 0
@@ -295,54 +290,81 @@ def check_layer(grid, layer):
 def check_grid(grid):
     layer_counts = []
     for z in range(grid.shape[2]):
-        print("Layer", z, ":", check_layer(grid, z))
+        # print("Layer", z, ":", check_layer(grid, z))
         layer_counts.append(check_layer(grid, z))
     return layer_counts
 
+def visualize(final_grid):
+    #--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
 
-grid_layer_counts = check_grid(final_grid)
-print(np.sum(grid_layer_counts))
-
-# visualize grid_layer_counts in a plot
-plt.plot(grid_layer_counts)
-plt.xlabel("Layer")
-plt.ylabel("Number of particles")
-plt.title("Number of particles per layer")
-plt.show()
-
-# -------------------------------------------------------
+    grid_layer_counts = check_grid(final_grid)
+    # print(np.sum(grid_layer_counts))
 
 
-print("attach_prob:", ATTACH_PROB)
-print("decay_prob: ", DECAY_PROB)
-print("Average mold coverage: ", mold_cov_3d, "%")
-print("M-value: ", coverage_to_m_value(mold_cov_3d))
-print("Average mold coverage surface: ", mold_cov_surface, "%")
-print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
-print("Temperature: ", Temp)
-print("Relative Humidity: ", RH)
+    # visualize grid_layer_counts in a plot
+    plt.plot(grid_layer_counts)
+    plt.xlabel("Layer")
+    plt.ylabel("Number of particles")
+    plt.title("Number of particles per layer")
+    plt.show()
 
-# final_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-# final_grid[center_index, center_index, GRID_SIZE - 1] = 1
-# particle_loop(final_grid)
+    # print("attach_prob:", ATTACH_PROB)
+    # print("decay_prob: ", DECAY_PROB)
+    # print("Average mold coverage: ", mold_cov_3d, "%")
+    # print("M-value: ", coverage_to_m_value(mold_cov_3d))
+    # print("Average mold coverage surface: ", mold_cov_surface, "%")
+    # print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
+    # print("Temperature: ", Temp)
+    # print("Relative Humidity: ", RH)
 
-# Plot the upper slice of the mold.
-plt.imshow(final_grid[:, :, GRID_SIZE], cmap='Greens', interpolation='nearest')
-plt.show()
+    # final_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
+    # final_grid[center_index, center_index, GRID_SIZE - 1] = 1
+    # particle_loop(final_grid)
 
-x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
+    # Plot the upper slice of the mold.
+    plt.imshow(final_grid[:, :, GRID_SIZE], cmap='Greens', interpolation='nearest')
+    plt.show()
 
-# Plot the 3D grid
-fig = plt.figure(figsize=(8, 6))
-ax = fig.add_subplot(111, projection='3d')
+    plt.imshow(final_grid[:, GRID_SIZE //2, :], cmap='Greens', interpolation='nearest')
+    plt.show()
 
-scatter = ax.scatter(x, y, z, c='goldenrod', s=GRID_SIZE //
-                     5, marker='s', edgecolor='forestgreen')
+    x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
 
-# Set plot labels
-ax.set_title("3D Mold Growth")
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
+    # Plot the 3D grid
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
 
-plt.show()
+    ax.scatter(x, y, z, c='goldenrod', s=GRID_SIZE //
+                        5, marker='s', edgecolor='forestgreen')
+
+    # Set plot labels
+    ax.set_title("3D Mold Growth")
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    plt.show()
+
+def main():
+    global NUM_SIMS, BATCH_SIZE, NO_HITS_MAX
+    if len(sys.argv) == 4:
+        NUM_SIMS = int(sys.argv[1])
+        BATCH_SIZE = int(sys.argv[2])
+        NO_HITS_MAX = int(sys.argv[3])
+    else:
+        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, NO_HITS_MAX: ", NUM_SIMS, BATCH_SIZE, NO_HITS_MAX)
+    start = time.time()
+    final_grid = monte_carlo()
+    end = time.time()
+    mold_grid = final_grid.copy()
+    mold_grid[mold_grid > 0.02] = 1
+
+    mold_cov_3d = np.mean(mold_grid) * 100
+    mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
+    print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface)
+
+    # visualize(final_grid)
+    
+
+if __name__ == "__main__":
+    main()
