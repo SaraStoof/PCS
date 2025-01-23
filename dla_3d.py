@@ -1,5 +1,5 @@
 import numpy as np
-# from numba import njit, prange
+from numba import njit, prange
 import matplotlib.pyplot as plt
 import time
 import sys
@@ -10,7 +10,7 @@ RADIUS = (GRID_SIZE // 2) + 5  # Maximum radius of the circle
 center_index = GRID_SIZE // 2
 TIMESTEPS = 120
 NUM_SIMS = 5
-Temp = 30
+TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
 NO_HITS_MAX = 5
@@ -27,9 +27,9 @@ neighbor_offsets = np.array([
 ])
 
 
-# @njit
-def attaching_prob(Temp, RH):
-    RH_crit = (-0.00267 * (Temp**3)) + (0.16*(Temp**2)) - (3.13*Temp) + 100
+@njit
+def attaching_prob(TEMP, RH):
+    RH_crit = (-0.00267 * (TEMP**3)) + (0.16*(TEMP**2)) - (3.13*TEMP) + 100
     if(RH < RH_crit):
         return 0
     # The maximum M-value for the given temperature and relative humidity
@@ -51,18 +51,18 @@ def attaching_prob(Temp, RH):
         return 1
     return area_covered/500
 
-ATTACH_PROB = attaching_prob(Temp, RH)
+ATTACH_PROB = attaching_prob(TEMP, RH)
 DECAY_PROB = (1 - ATTACH_PROB) * 0.01
 
 
 def coverage_to_m_value(cov):
     return 14.87349 + (-0.03030586 - 14.87349)/(1 + (cov/271.0396)**0.4418942)
 
-# @njit(parallel=True)
+@njit(parallel=True)
 def decay_grid(grid):
     decay_amount = 0
     sum_grid = int(np.sum(grid))
-    for _ in range(sum_grid):
+    for _ in prange(sum_grid):
         if np.random.uniform() < DECAY_PROB:
             decay_amount += 1
     if decay_amount == 0:
@@ -91,7 +91,7 @@ def decay_grid(grid):
 
     # keep removing furthest point from middle point
     distances = np.zeros(coords.shape[0])
-    for i in range(coords.shape[0]):
+    for i in prange(coords.shape[0]):
         distances[i] = np.sqrt((coords[i][0] - middle[0]) ** 2 +
                                (coords[i][1] - middle[1]) ** 2 + (coords[i][2] - middle[2]) ** 2)
     for _ in range(decay_amount):
@@ -101,7 +101,7 @@ def decay_grid(grid):
         distances[idx] = -1
 
 
-# @njit
+@njit
 def in_bounds_neighbors(particles):
     return (
         (particles[:, 0] >= 0) & (particles[:, 0] <= GRID_SIZE) &
@@ -110,7 +110,7 @@ def in_bounds_neighbors(particles):
     )
 
 
-# @njit
+@njit
 def remove_indices(arr, indices_to_remove):
     # Create a mask to keep all elements by default
     mask = np.ones(len(arr), dtype=np.bool_)
@@ -123,7 +123,7 @@ def remove_indices(arr, indices_to_remove):
     return arr[mask]
 
 
-# @njit
+@njit
 def in_bounds(particles, radius):
     # if dist_to_seed >= radius + 5:
     return particles[
@@ -133,12 +133,12 @@ def in_bounds(particles, radius):
     ]
 
 
-# @njit
+@njit
 def move(particles):
     return particles + np.random.randint(-1, 2, (len(particles), 3))
 
 
-# @njit
+@njit
 def check_neighbor(particles, grid, batch_size):
 
     # numpy broadcasting
@@ -175,7 +175,7 @@ def check_neighbor(particles, grid, batch_size):
 
     return hits, p_indices
 
-# @njit
+@njit
 def nonneg_arr(arr):
     # Flattens all negative values to 0. Makes the array nonnegative.
     arr[np.where(arr < 0.0)] = 0
@@ -183,7 +183,7 @@ def nonneg_arr(arr):
 
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
-# @njit
+@njit
 def particle_loop(grid, batch_size=1000):
 
     reached_edge = False
@@ -264,11 +264,11 @@ def particle_loop(grid, batch_size=1000):
 
     return
 
-# @njit(parallel=True)
+@njit(parallel=True)
 def monte_carlo():
     
     aggr_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-    for _ in range(NUM_SIMS):
+    for _ in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
         grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
@@ -346,13 +346,14 @@ def visualize(final_grid):
     plt.show()
 
 def main():
-    global NUM_SIMS, BATCH_SIZE, NO_HITS_MAX
+    global NUM_SIMS, BATCH_SIZE, NO_HITS_MAX, TEMP, RH
     if len(sys.argv) == 4:
         NUM_SIMS = int(sys.argv[1])
         BATCH_SIZE = int(sys.argv[2])
-        NO_HITS_MAX = int(sys.argv[3])
+        TEMP = int(sys.argv[3])
+        RH = int(sys.argv[3])
     else:
-        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, NO_HITS_MAX: ", NUM_SIMS, BATCH_SIZE, NO_HITS_MAX)
+        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
     start = time.time()
     final_grid = monte_carlo()
     end = time.time()
@@ -363,7 +364,7 @@ def main():
     mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
     print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface)
 
-    # visualize(final_grid)
+    visualize(final_grid)
     
 
 if __name__ == "__main__":
