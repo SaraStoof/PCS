@@ -95,7 +95,8 @@ def decay_grid(grid):
     distances = np.zeros(coords.shape[0])
     for i in prange(coords.shape[0]):
         distances[i] = np.sqrt((coords[i][0] - middle[0]) ** 2 +
-                               (coords[i][1] - middle[1]) ** 2 + (coords[i][2] - middle[2]) ** 2)
+                               (coords[i][1] - middle[1]) ** 2 +
+                               (coords[i][2] - middle[2]) ** 2)
     for _ in range(decay_amount):
         idx = np.argmax(distances)
         furthest = coords[idx]
@@ -221,7 +222,7 @@ def particle_loop(grid, batch_size=1000):
 
         if i % timesteps_per_day == 0:
             #These things happen once a day
-            decay_grid(DECAY_PROB, grid)
+            decay_grid(grid)
 
         # http://datagenetics.com/blog/january32020/index.html
 
@@ -287,8 +288,6 @@ def particle_loop(grid, batch_size=1000):
             # Remove particles that already attached themselves to the cluster
             particle = remove_indices(particle, p_indices)
 
-    return
-
 @njit(parallel=True)
 def monte_carlo():
     
@@ -297,7 +296,7 @@ def monte_carlo():
     for i in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-        grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
+        grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANT: REMOVED THE MINUS 1 KEEP LIKE THIS
         particle_loop(grid, BATCH_SIZE)
         aggr_grid += grid
         mold_cov += mold_coverage(grid)
@@ -383,7 +382,6 @@ def main():
     start = time.time()
     final_grid, mold_cov_new = monte_carlo()
     end = time.time()
-    
     mold_grid = final_grid.copy()
     mold_grid[mold_grid > 0.02] = 1
 
@@ -391,7 +389,7 @@ def main():
     mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
     print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface, mold_cov_new)
 
-    visualize(final_grid, mold_cov_3d, mold_cov_surface)
+    visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new)
     
 
 if __name__ == "__main__":
