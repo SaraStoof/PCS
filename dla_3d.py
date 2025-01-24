@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import time
 import sys
 
-timesteps_per_day = 300
+timesteps_per_day = 20
 
 # Constants
 GRID_SIZE = 100
@@ -15,7 +15,7 @@ TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
 NO_HITS_MAX = 5
-DAYS = 168
+DAYS = 6
 TIMESTEPS = DAYS * timesteps_per_day
 
 
