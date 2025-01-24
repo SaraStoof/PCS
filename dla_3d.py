@@ -160,7 +160,6 @@ def dist_to_surface(x, y, z):
 	dists = [x, y, z, GRID_X - x, GRID_Y - y, GRID_Z - z]
 	return min(dists)
 
-# -------------------
 
 @njit
 def check_neighbor(particles, grid, batch_size):
@@ -217,8 +216,10 @@ def remove_indices(arr, indices_to_remove):
     return arr[mask]
 
 
-
-#DONT FLATTEN IT, MAKE IT BE ON THE SURFACE MAX_RADIUS
+# The below function return lists of coordinates for the new batch of particles
+# based on the spawn point and the current radius.
+# When the coordinate falls outside of the grid, it defaults to the edge of the grid.
+# which gives the surface twice the chance of being hit.
 @njit
 def new_x_coords(theta, phi, current_radius):
     if SPAWN_ON_X_EDGE[1]:
@@ -239,10 +240,6 @@ def new_y_coords(theta, phi, current_radius):
 
 @njit
 def new_z_coords(phi, current_radius):
-    # Returns a list of z-coordinates for the new batch of particles.
-    # The z-coordinates are based on the spawn point and the current radius.
-    # When the coordinate falls outside of the grid, it defaults to the edge of the grid.
-    # which gives the surface twice the chance of being hit.
     if SPAWN_ON_Z_EDGE[1]:  # If spawn point is on the top edge
         return (SPAWN_Z - nonneg_arr(current_radius * np.cos(phi)))
     elif SPAWN_ON_Z_EDGE[0]:  # If spawn point is on the bottom edge
@@ -286,8 +283,6 @@ def particle_loop(grid, batch_size=1000):
             particles[:, 0] = (np.random.randint(0, GRID_X, batch_size))
             particles[:, 1] = (np.random.randint(0, GRID_Y, batch_size))
             particles[:, 2] = (np.random.randint(0, GRID_Z, batch_size))
-
-        # Drop all particles that have spawned outside of the grid to the surface
 
         if len(particles) > current_radius**3:
             particles = particles[:current_radius**3]
@@ -347,29 +342,58 @@ def monte_carlo():
     mold_cov = mold_cov / NUM_SIMS
     return aggr_grid, mold_cov
 
-def check_layer(grid, layer):
+def get_layer_count(grid, layer, axis=2):
     count = 0
-    for x in range(grid.shape[0]):
-        for y in range(grid.shape[1]):
-            if grid[x, y, layer] > 0:
+    axes = [0, 1, 2]
+    axes.remove(axis)
+
+    for i in range(grid.shape[axes[0]]):
+        for j in range(grid.shape[axes[1]]):
+            if grid[i, j, layer] > 0:
                 count += 1
     return count
 
-def check_grid(grid):
+def get_grid_layer_counts(grid, axis=2):
     layer_counts = []
-    for z in range(grid.shape[2]):
-        # print("Layer", z, ":", check_layer(grid, z))
-        layer_counts.append(check_layer(grid, z))
+    for i in range(grid.shape[axis]):
+        # print("Layer", z, ":", get_layer_count(grid, z))
+        layer_counts.append(get_layer_count(grid, i))
     return layer_counts
 
+def plot_slices(grid):
+
+    ax_titles = ["X-axis", "Y-axis", "Z-axis"]
+    titles = ["Top slice", "Middle slice", "Bottom slice"]
+
+
+    slices_per_axis = [
+        [grid[0, :, :], grid[GRID_X // 2, :, :], grid[GRID_X, :, :]],
+        [grid[:, 0, :], grid[:, GRID_Y // 2, :], grid[:, GRID_Y, :]],
+        [grid[:, :, 0], grid[:, :, GRID_Z // 2], grid[:, :, GRID_Z]]
+    ]
+    plt.figure(figsize=(10, 10))
+
+    for axis, slices in enumerate(slices_per_axis):
+        axes = [GRID_X, GRID_Y, GRID_Z]
+        axes.pop(axis)
+
+        for i, slice in enumerate(slices):
+
+            plt.subplot(3, 3, 3 * axis + i + 1)
+            plt.imshow(slice, cmap='Greens', interpolation='nearest')
+            plt.xlim(0, axes[0])
+            plt.ylim(0, axes[1])
+            plt.title(f"{ax_titles[axis]}, {titles[i]}")
+            plt.axis('off')
+
+            plt.tight_layout()
+
+    plt.show()
+
+
 def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
-    #--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
 
-    grid_layer_counts = check_grid(final_grid)
-    # print(np.sum(grid_layer_counts))
-
-
-    # visualize grid_layer_counts in a plot
+    grid_layer_counts = get_grid_layer_counts(final_grid)
     plt.plot(grid_layer_counts)
     plt.xlabel("Layer")
     plt.ylabel("Number of particles")
@@ -386,23 +410,22 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
     print("Temperature: ", TEMP)
     print("Relative Humidity: ", RH)
 
-    # Plot the upper slice of the mold.
-    plt.imshow(final_grid[:, :, GRID_Z], cmap='Greens', interpolation='nearest')
-    plt.show()
+    plot_slices(final_grid)
 
-    plt.imshow(final_grid[:, GRID_Y // 2, :], cmap='Greens', interpolation='nearest')
-    plt.show()
-
+    # 3D plot
     x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
 
-    # Plot the 3D grid
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection='3d')
 
     ax.scatter(x, y, z, c='goldenrod', s=GRID_X // 5,
                marker='s', edgecolor='forestgreen')
 
-    # Set plot labels
+    # Set the axes to the fixed grid size
+    ax.set_xlim(0, GRID_X)
+    ax.set_ylim(0, GRID_Y)
+    ax.set_zlim(0, GRID_Z)
+
     ax.set_title("3D Mold Growth")
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -410,19 +433,45 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
 
     plt.show()
 
+
+def ask_grid_size():
+    # Get user input for grid dimensions
+    global GRID_X, GRID_Y, GRID_Z, MAX_RADIUS
+
+    try:
+        GRID_X = int(input("Enter max x-coordinate of grid: "))
+        GRID_Y = int(input("Enter max y-coordinate of grid: "))
+        GRID_Z = int(input("Enter max z-coordinate of grid: "))
+
+        if GRID_X < 0 or GRID_Y < 0 or GRID_Z < 0:
+            raise ValueError("Max coordinate can't be negative.")
+
+    except (ValueError, TypeError):
+        print("Invalid grid size. Defaulting to 100x100x100.")
+        GRID_X, GRID_Y, GRID_Z = 100, 100, 100
+
+    print("Grid size: ", GRID_X, GRID_Y, GRID_Z)
+    MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
+
+
 def ask_spawn_point():
     # Ask for spawn point
     global SPAWN_X, SPAWN_Y, SPAWN_Z
     global SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE
 
-    SPAWN_X = int(input("Enter x-coordinate of spawn point: "))
-    SPAWN_Y = int(input("Enter y-coordinate of spawn point: "))
-    SPAWN_Z = int(input("Enter z-coordinate of spawn point: "))
+    try:
 
-    if SPAWN_X < 0 or SPAWN_X > GRID_X or SPAWN_Y < 0 or SPAWN_Y > GRID_Y or \
-       SPAWN_Z < 0 or SPAWN_Z > GRID_Z or \
-       not (SPAWN_X == 0 or SPAWN_X == GRID_X or SPAWN_Y == 0 or \
+        SPAWN_X = int(input("Enter x-coordinate of spawn point: "))
+        SPAWN_Y = int(input("Enter y-coordinate of spawn point: "))
+        SPAWN_Z = int(input("Enter z-coordinate of spawn point: "))
+
+        if SPAWN_X < 0 or SPAWN_X > GRID_X or SPAWN_Y < 0 or SPAWN_Y > GRID_Y or \
+            SPAWN_Z < 0 or SPAWN_Z > GRID_Z or \
+            not (SPAWN_X == 0 or SPAWN_X == GRID_X or SPAWN_Y == 0 or \
             SPAWN_Y == GRID_Y or SPAWN_Z == 0 or SPAWN_Z == GRID_Z):
+
+            raise ValueError
+    except (ValueError, TypeError):
         print("Invalid spawn point. Defaulting to center of grid.")
         SPAWN_X = GRID_X // 2
         SPAWN_Y = GRID_Y // 2
@@ -450,6 +499,7 @@ def main():
     ATTACH_PROB = attaching_prob(TEMP, RH)
     DECAY_PROB = get_decay_prob(0.05, 10)
 
+    ask_grid_size()
     ask_spawn_point()
 
     start = time.time()
