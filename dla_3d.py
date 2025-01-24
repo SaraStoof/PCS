@@ -4,32 +4,20 @@ import matplotlib.pyplot as plt
 import time
 import sys
 
-timesteps_per_day = 20
+TIMESTEPS_PER_DAY = 20
 
-# Constants
-
-# NEWGRID
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
 SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
 SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (False, False), (False, False), (False, True)
-RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
-# -----
+MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
-# GRID_SIZE = 100
-# RADIUS = (GRID_SIZE // 2) + 5  # Maximum radius of the circle
-# center_index = GRID_SIZE // 2
 NUM_SIMS = 5
 TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
 NO_HITS_MAX = 5
 DAYS = 6
-TIMESTEPS = DAYS * timesteps_per_day
-
-
-# Initialize grid (plus 1 to account for 0-index)
-# grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-# grid[center_index, center_index, 0] = 1  # Set seed point as part of cluster
+TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 neighbor_offsets = np.array([
     [1, 0, 0], [-1, 0, 0],  # +x, -x
@@ -153,7 +141,6 @@ def in_bounds_neighbors(particles):
     )
 
 
-
 @njit
 def in_bounds(particles, radius):
 
@@ -231,7 +218,7 @@ def remove_indices(arr, indices_to_remove):
 
 
 
-#DONT FLATTEN IT, MAKE IT BE ON THE SURFACE RADIUS
+#DONT FLATTEN IT, MAKE IT BE ON THE SURFACE MAX_RADIUS
 @njit
 def new_x_coords(theta, phi, current_radius):
     if SPAWN_ON_X_EDGE[1]:
@@ -270,13 +257,12 @@ def particle_loop(grid, batch_size=1000):
     # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 5
     particle_count = 0
-    timesteps_per_day = int(TIMESTEPS/DAYS)
 
     # keeps going until a particle touches the radius of the circle while being attached to the body
     for i in prange(TIMESTEPS):
         # Create the particle starting from a random point on the circle
 
-        if i % timesteps_per_day == 0:
+        if i % TIMESTEPS_PER_DAY == 0:
             #These things happen once a day
             decay_grid(grid)
 
@@ -288,39 +274,39 @@ def particle_loop(grid, batch_size=1000):
         phi = np.random.uniform(np.pi, 2 * np.pi, batch_size)
 
         # Initialize an empty array to hold the particle coordinates
-        particle = np.zeros((batch_size, 3))
+        particles = np.zeros((batch_size, 3))
 
         if reached_edge == False:
             # Populate the particle array manually
-            particle[:, 0] = new_x_coords(theta, phi, current_radius)
-            particle[:, 1] = new_y_coords(theta, phi, current_radius)
-            particle[:, 2] = new_z_coords(phi, current_radius)
+            particles[:, 0] = new_x_coords(theta, phi, current_radius)
+            particles[:, 1] = new_y_coords(theta, phi, current_radius)
+            particles[:, 2] = new_z_coords(phi, current_radius)
 
         else:
-            particle[:, 0] = (np.random.randint(0, GRID_X, batch_size))
-            particle[:, 1] = (np.random.randint(0, GRID_Y, batch_size))
-            particle[:, 2] = (np.random.randint(0, GRID_Z, batch_size))
+            particles[:, 0] = (np.random.randint(0, GRID_X, batch_size))
+            particles[:, 1] = (np.random.randint(0, GRID_Y, batch_size))
+            particles[:, 2] = (np.random.randint(0, GRID_Z, batch_size))
 
         # Drop all particles that have spawned outside of the grid to the surface
 
-        if len(particle) > current_radius**3:
-            particle = particle[:current_radius**3]
+        if len(particles) > current_radius**3:
+            particles = particles[:current_radius**3]
 
-        particle = np.floor(particle)
-        particle_count += len(particle)
+        particles = np.floor(particles)
+        particle_count += len(particles)
 
-        particle = in_bounds(particle, current_radius)
+        particles = in_bounds(particles, current_radius)
 
         no_hits_count = 0
 
-        while len(particle) > 0:
+        while len(particles) > 0:
 
-            particle = move(particle)
+            particles = move(particles)
 
-            particle = in_bounds(particle, current_radius)
+            particles = in_bounds(particles, current_radius)
 
             # check neighbors and update grid
-            hits, p_indices = check_neighbor(particle, grid, batch_size)
+            hits, p_indices = check_neighbor(particles, grid, batch_size)
 
             # Break if particles have moved five turns with no hits.
             if len(hits) == 0:
@@ -337,11 +323,11 @@ def particle_loop(grid, batch_size=1000):
                 dist_to_seed = np.linalg.norm(hit - np.array([SPAWN_X, SPAWN_Y, SPAWN_Z]))
                 if dist_to_seed >= current_radius - 1 and reached_edge == False:
                     current_radius += 5
-                    if current_radius >= RADIUS:
+                    if current_radius >= MAX_RADIUS:
                         reached_edge = True
 
             # Remove particles that already attached themselves to the cluster
-            particle = remove_indices(particle, p_indices)
+            particles = remove_indices(particles, p_indices)
 
 @njit(parallel=True)
 def monte_carlo():
@@ -448,7 +434,7 @@ def ask_spawn_point():
 
     print("Spawn point: ", SPAWN_X, SPAWN_Y, SPAWN_Z)
     print("On edge: ", SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
-    print("Radius: ", RADIUS)
+    print("Radius: ", MAX_RADIUS)
 
 
 
