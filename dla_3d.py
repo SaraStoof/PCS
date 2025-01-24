@@ -338,11 +338,9 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
     print("decay_prob: ", DECAY_PROB)
     print("Average mold coverage: ", mold_cov_3d, "%")
     print("Average mold coverage new: ", mold_cov_new, "%")
-    print("M-value: ", coverage_to_m_value(mold_cov_3d))
     print("Average mold coverage surface: ", mold_cov_surface, "%")
+    print("M-value: ", coverage_to_m_value(mold_cov_3d))
     print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
-    print("Temperature: ", TEMP)
-    print("Relative Humidity: ", RH)
 
     # Plot the upper slice of the mold.
     plt.imshow(final_grid[:, :, GRID_SIZE], cmap='Greens', interpolation='nearest')
@@ -387,7 +385,8 @@ def main():
 
     mold_cov_3d = np.mean(mold_grid) * 100
     mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
-    print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface, mold_cov_new)
+    # print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface, mold_cov_new)
+    print(f"Time taken: {end - start}")
 
     visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new)
     
