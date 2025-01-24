@@ -457,7 +457,7 @@ def main():
     mold_grid[mold_grid > 0.02] = 1
 
     mold_cov_3d = np.mean(mold_grid) * 100
-    mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
+    mold_cov_surface = np.mean(mold_grid[:, :, GRID_Z]) * 100
     # print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface, mold_cov_new)
     print(f"Time taken: {end - start}")
 
