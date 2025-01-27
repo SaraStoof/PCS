@@ -9,15 +9,23 @@ import matplotlib.pyplot as plt
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
+from helpers.helpers_user_input import *
 
 # Constants
+GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
+SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
+SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (False, False), (False, False), (False, True)
+MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
+
 GRID_SIZE = 100
 RADIUS = (GRID_SIZE // 2) + 5  # Maximum radius of the circle
 center_index = GRID_SIZE // 2
-TIMESTEPS = 120
 NUM_SIMS = 5
 TEMP = 30
 RH = 97
+DAYS = 6
+TIMESTEPS_PER_DAY = 20
+TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 
 @njit(parallel=True)
@@ -77,10 +85,12 @@ def loop_step(reached_edge, grid, particle, current_radius, no_hits_count):
 
         particle = move(particle)
 
-        particle = in_bounds(particle, current_radius)
+        particle = in_bounds(particle, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
+                              SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
         # check neighbors and update grid
-        hits, p_indices = check_neighbor(particle, grid)
+        hits, p_indices = check_neighbor(particle, grid,
+                                             GRID_X, GRID_Y, GRID_Z, ATTACH_PROB)
 
         # Break if particles have moved five turns with no hits.
         if len(hits) == 0:
@@ -127,7 +137,7 @@ def particle_loop(grid, sim_num, batch_size=1000):
         ax.set_zlabel("Z")
         plt.draw()
         plt.pause(0.1)
-        if t % int(TIMESTEPS*0.05) == 0:
+        if t % TIMESTEPS_PER_DAY == 0:
             decay_grid(grid)
 
         # http://datagenetics.com/blog/january32020/index.html
@@ -160,7 +170,8 @@ def particle_loop(grid, sim_num, batch_size=1000):
         particle = np.floor(particle)
         particle_count += len(particle)
 
-        particle = in_bounds(particle, current_radius)
+        particle = in_bounds(particle, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
+                              SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
         no_hits_count = 0
 
@@ -189,6 +200,11 @@ def monte_carlo():
     aggr_grid = aggr_grid/NUM_SIMS
     return aggr_grid
 
+ask_grid_size()
+ask_spawn_point()
+
+ATTACH_PROB = get_attach_prob(TEMP, RH)
+DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
 final_grid = monte_carlo()
 mold_grid = final_grid.copy()
 mold_grid[mold_grid > 0.02] = 1
@@ -209,8 +225,6 @@ plt.draw()
 
 # -------------------------------------------------------
 
-ATTACH_PROB = get_attach_prob(TEMP, RH)
-DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
 print("attach_prob:", ATTACH_PROB)
 print("decay_prob: ", DECAY_PROB)
 print("Average mold coverage: ", mold_cov_3d, "%")
