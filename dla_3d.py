@@ -25,6 +25,10 @@ TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 @njit(parallel=True)
 def decay_grid(grid):
+    '''
+    Introduces decay to the grid, setting certain particles to die by prioritizing
+    particles around the edge of the cluster
+    '''
     decay_amount = 0
     sum_grid = int(np.sum(grid))
     for _ in prange(sum_grid):
@@ -70,15 +74,16 @@ def decay_grid(grid):
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
 @njit
 def particle_loop(grid, batch_size=1000):
+    '''
+    This is the main loop of the simulation, it runs the simulation for mold growth for
+    a certain amount of timesteps by making changes to the inputted grid
+    '''
     reached_edge = False
     # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 5
     particle_count = 0
 
-    # keeps going until a particle touches the radius of the circle while being attached to the body
     for i in prange(TIMESTEPS):
-        # Create the particle starting from a random point on the circle
-
         if i % TIMESTEPS_PER_DAY == 0:
             #These things happen once a day
             decay_grid(grid)
@@ -153,9 +158,13 @@ def particle_loop(grid, batch_size=1000):
 
 @njit(parallel=True)
 def monte_carlo():
+    '''
+    This function runs the simulation a certain amount of times and returns the average
+    grid and mold coverage
+    '''
     aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
     mold_cov = 0
-    for i in prange(NUM_SIMS):
+    for _ in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
         grid[SPAWN_X, SPAWN_Y, SPAWN_Z] = 1
@@ -170,6 +179,10 @@ def monte_carlo():
 
 
 def plot_slices(grid):
+    '''
+    This function plots the slices of the final grid, it plots the top, middle and bottom
+    slice for the X, Y and Z-axis
+    '''
     ax_titles = ["X-axis", "Y-axis", "Z-axis"]
     titles = ["Top slice", "Middle slice", "Bottom slice"]
 
@@ -199,6 +212,11 @@ def plot_slices(grid):
 
 
 def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
+    '''
+    This function visualizes the final output of the simulations, it first plots the
+    number of particles per layer, then it plots the slices, afterwards it plots the
+    average of the final grid for all the simulations
+    '''
     grid_layer_counts = get_grid_layer_counts(final_grid)
     plt.plot(grid_layer_counts)
     plt.xlabel("Layer")
@@ -239,6 +257,9 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
 
 
 def ask_grid_size():
+    '''
+    Handle user input for getting the size of the grid while checking for faulty inputs
+    '''
     # Get user input for grid dimensions
     global GRID_X, GRID_Y, GRID_Z, MAX_RADIUS
 
@@ -259,6 +280,10 @@ def ask_grid_size():
 
 
 def ask_spawn_point():
+    '''
+    Handle user input for getting the spawn point of the initial particle while checking
+    for faulty inputs
+    '''
     # Ask for spawn point
     global SPAWN_X, SPAWN_Y, SPAWN_Z
     global SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE
@@ -300,7 +325,7 @@ def main():
         RH = int(sys.argv[4])
     else:
         print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
-    ATTACH_PROB = attaching_prob(TEMP, RH)
+    ATTACH_PROB = get_attach_prob(TEMP, RH)
     DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
 
     ask_grid_size()
@@ -314,7 +339,6 @@ def main():
 
     mold_cov_3d = np.mean(mold_grid) * 100
     mold_cov_surface = np.mean(mold_grid[:, :, GRID_Z]) * 100
-    # print(NUM_SIMS, end - start, BATCH_SIZE, TIMESTEPS, NO_HITS_MAX, mold_cov_3d, mold_cov_surface, mold_cov_new)
     print(f"Time taken: {end - start}")
 
     visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new)

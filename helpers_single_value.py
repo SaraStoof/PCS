@@ -6,7 +6,7 @@ from numba import njit, prange
 import numpy as np
 
 @njit
-def attaching_prob(TEMP, RH):
+def get_attach_prob(TEMP, RH):
     '''
     This function returns a float between 0 and 1, which denotes the probability of a
     particle attaching to the main cluster, based on inputted temperature and relative
@@ -36,8 +36,10 @@ def attaching_prob(TEMP, RH):
 
 
 def get_decay_prob(ATTACH_PROB, decay_prob_multiplier, exp_dropoff):
-    # Using exponential function to calculate decay rate,
-    # such that changes in attach prob are "felt more"
+    '''
+    This function returns the decay probability as a float between 0 and 1 using
+    exponential function, such that changes in attach probability are "felt more"
+    '''
     return np.exp(-ATTACH_PROB * exp_dropoff) * decay_prob_multiplier
 
 
