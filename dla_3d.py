@@ -1,11 +1,15 @@
+'''
+The main file for the simulation, uses the other helper functions to run the simulations
+'''
+
 import numpy as np
 from numba import njit, prange
 import matplotlib.pyplot as plt
 import time
 import sys
-from helpers_single_value import *
-from helpers_plots import *
-from helpers_loop import *
+from helpers.helpers_single_value import *
+from helpers.helpers_plots import *
+from helpers.helpers_loop import *
 
 TIMESTEPS_PER_DAY = 20
 
