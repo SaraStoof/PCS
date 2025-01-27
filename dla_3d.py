@@ -3,6 +3,9 @@ from numba import njit, prange
 import matplotlib.pyplot as plt
 import time
 import sys
+from helpers_single_value import *
+from helpers_plots import *
+from helpers_loop import *
 
 TIMESTEPS_PER_DAY = 20
 
@@ -18,50 +21,6 @@ BATCH_SIZE = 1000
 NO_HITS_MAX = 5
 DAYS = 6
 TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
-
-neighbor_offsets = np.array([
-    [1, 0, 0], [-1, 0, 0],  # +x, -x
-    [0, 1, 0], [0, -1, 0],  # +y, -y
-    [0, 0, 1], [0, 0, -1]   # +z, -z
-])
-
-
-@njit
-def attaching_prob(TEMP, RH):
-    RH_crit = (-0.00267 * (TEMP**3)) + (0.16*(TEMP**2)) - (3.13*TEMP) + 100
-    if(RH < RH_crit):
-        return 0
-    # The maximum M-value for the given temperature and relative humidity
-    M_max = 1+7*((RH_crit-RH)/(RH_crit-100))-2*((RH_crit - RH)/(RH_crit-100))**2
-    # The above two formulas are from the paper "A mathematical model of mould growth on
-    # wooden material" by Hukka and Vitten 1999
-    if(M_max < 0):
-        return 0
-
-    area_covered = 133.6561 + (0.9444885 - 133.6561)/(1 + (M_max/4.951036)**5.67479)
-    # The formula for translating M-value to surface coverage represented by that
-    # coverage, is retrieved by regression over the definition of M-value.
-    # We use this as a stand-in for attachment probability.
-    # The regression is over the points (0,0), (1,1), (3,10), (4,30), (5,70), (6,100)
-    # These are the points where the M-value is 0, 1, 3, 4, 5, 6, respectively as given
-    # by the table in "Development of an improved model for mould growth: Modelling"
-    # by Viitanen et al. 2008
-    if area_covered > 100:
-        return 1
-    return area_covered / 500
-
-
-ATTACH_PROB = attaching_prob(TEMP, RH)
-DECAY_PROB = (1 - ATTACH_PROB) * 0.01
-
-
-def coverage_to_m_value(cov):
-    return 14.87349 + (-0.03030586 - 14.87349)/(1 + (cov/271.0396)**0.4418942)
-
-
-def get_decay_prob(decay_prob_multiplier, exponential_drop_off):
-    #Using exponential function to calculate decay rate, such that changes in attach prob are "felt more"
-    return np.exp(-ATTACH_PROB * exponential_drop_off) * decay_prob_multiplier
 
 
 @njit(parallel=True)
@@ -107,145 +66,6 @@ def decay_grid(grid):
         grid[int(furthest[0]), int(furthest[1]), int(furthest[2])] = 0
         distances[idx] = -1
 
-@njit(parallel=True)
-def mold_coverage(grid, grid_size = 5):
-    #Uses grid sampling to smarter estimate mold coverage. Divides the grid into 10x10 squares and counts the number of squares with mold.
-    height, width, depth = grid.shape
-    cells_x = width // grid_size
-    cells_y = height // grid_size
-    cells_z = depth // grid_size
-
-    covered_cells = 0
-    total_cells = cells_x * cells_y * cells_z
-
-    for i in prange(cells_y):
-        for j in prange(cells_x):
-            for k in prange(cells_y):
-                # Extract grid cell
-                cell = grid[i * grid_size:(i + 1) * grid_size, j * grid_size:(j + 1) * grid_size, k * grid_size:(k + 1) * grid_size ]
-
-                # Check if there's any mold in the cell
-                if np.any(cell > 0):
-                    covered_cells += 1
-    if covered_cells == 1:
-        return 0
-
-    return (covered_cells / total_cells) * 100
-
-@njit
-def in_bounds_neighbors(particles):
-    return (
-        (particles[:, 0] >= 0) & (particles[:, 0] <= GRID_X) &
-        (particles[:, 1] >= 0) & (particles[:, 1] <= GRID_Y) &
-        (particles[:, 2] >= 0) & (particles[:, 2] <= GRID_Z)
-    )
-
-
-@njit
-def in_bounds(particles, radius):
-
-    return particles[
-        (particles[:, 0] >= SPAWN_X - radius * (not(SPAWN_ON_X_EDGE[0]))) & (particles[:, 0] <= SPAWN_X + radius * (not(SPAWN_ON_X_EDGE[1]))) &
-        (particles[:, 1] >= SPAWN_Y - radius * (not(SPAWN_ON_Y_EDGE[0]))) & (particles[:, 1] <= SPAWN_Y + radius * (not(SPAWN_ON_Y_EDGE[1]))) &
-        (particles[:, 2] >= SPAWN_Z - radius * (not(SPAWN_ON_Z_EDGE[0]))) & (particles[:, 2] <= SPAWN_Z + radius * (not(SPAWN_ON_Z_EDGE[1])))
-    ]
-
-
-@njit
-def move(particles):
-    return particles + np.random.randint(-1, 2, (len(particles), 3))
-
-@njit
-def dist_to_surface(x, y, z):
-	dists = [x, y, z, GRID_X - x, GRID_Y - y, GRID_Z - z]
-	return min(dists)
-
-
-@njit
-def check_neighbor(particles, grid, batch_size):
-
-    # numpy broadcasting
-    neighbors = particles[:, None, :] + neighbor_offsets[None, :, :]
-    neighbors = neighbors.reshape(-1, 3)
-
-    # Get the valid mask for in-bounds neighbors
-    mask = in_bounds_neighbors(neighbors)
-    valid_neighbors = neighbors[mask]
-
-    # Now match the original indices
-    original_indices = np.nonzero(mask)[0]
-
-    # Check if valid neighbors touch the grid
-    hits_indices = []
-
-    for idx, neighbor in enumerate(valid_neighbors):
-        x, y, z = int(neighbor[0]), int(neighbor[1]), int(neighbor[2])
-        if grid[x, y, z] == 1:
-
-            depth = dist_to_surface(x, y, z)
-            depth_bias_rate = 0.05
-            depth_bias = np.exp(-depth_bias_rate * depth)
-            # print("x:", x, "y:", y, "z:", z, "depth:", depth, "depth_bias:", depth_bias)
-
-            if np.random.uniform() < ATTACH_PROB + depth_bias:
-                # Track original particle indices
-                hits_indices.append(original_indices[idx])
-
-    # Filter original particles by hits
-    hits = [particles[i // 6] for i in hits_indices]
-    p_indices = [i // 6 for i in hits_indices]
-
-    return hits, p_indices
-
-@njit
-def nonneg_arr(arr):
-    # Flattens all negative values to 0. Makes the array nonnegative.
-    arr[np.where(arr < 0.0)] = 0
-    return arr
-
-@njit
-def remove_indices(arr, indices_to_remove):
-    # Create a mask to keep all elements by default
-    mask = np.ones(len(arr), dtype=np.bool_)
-
-    # Mark indices to remove as False
-    for idx in indices_to_remove:
-        mask[idx] = False
-
-    # Filter the array using the mask
-    return arr[mask]
-
-
-# The below function return lists of coordinates for the new batch of particles
-# based on the spawn point and the current radius.
-# When the coordinate falls outside of the grid, it defaults to the edge of the grid.
-# which gives the surface twice the chance of being hit.
-@njit
-def new_x_coords(theta, phi, current_radius):
-    if SPAWN_ON_X_EDGE[1]:
-        return (SPAWN_X - nonneg_arr(current_radius * np.sin(phi) * np.cos(theta)))
-    elif SPAWN_ON_X_EDGE[0]:
-        return (SPAWN_X + nonneg_arr(current_radius * np.sin(phi) * np.cos(theta)))
-    return (SPAWN_X + current_radius * np.sin(phi) * np.cos(theta))
-
-
-@njit
-def new_y_coords(theta, phi, current_radius):
-    if SPAWN_ON_Y_EDGE[1]:
-        return (SPAWN_Y - nonneg_arr(current_radius * np.sin(phi) * np.sin(theta)))
-    elif SPAWN_ON_Y_EDGE[0]:
-        return (SPAWN_Y + nonneg_arr(current_radius * np.sin(phi) * np.sin(theta)))
-    return (SPAWN_Y + current_radius * np.sin(phi) * np.sin(theta))
-
-
-@njit
-def new_z_coords(phi, current_radius):
-    if SPAWN_ON_Z_EDGE[1]:  # If spawn point is on the top edge
-        return (SPAWN_Z - nonneg_arr(current_radius * np.cos(phi)))
-    elif SPAWN_ON_Z_EDGE[0]:  # If spawn point is on the bottom edge
-        return (SPAWN_Z + nonneg_arr(current_radius * np.cos(phi)))
-    return (SPAWN_Z + current_radius * np.cos(phi))
-
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
 @njit
@@ -275,9 +95,12 @@ def particle_loop(grid, batch_size=1000):
 
         if reached_edge == False:
             # Populate the particle array manually
-            particles[:, 0] = new_x_coords(theta, phi, current_radius)
-            particles[:, 1] = new_y_coords(theta, phi, current_radius)
-            particles[:, 2] = new_z_coords(phi, current_radius)
+            particles[:, 0] = new_x_coords(theta, phi, current_radius,
+                                           SPAWN_ON_X_EDGE, SPAWN_X)
+            particles[:, 1] = new_y_coords(theta, phi, current_radius,
+                                           SPAWN_ON_Y_EDGE, SPAWN_Y)
+            particles[:, 2] = new_z_coords(phi, current_radius,
+                                           SPAWN_ON_Z_EDGE, SPAWN_Z)
 
         else:
             particles[:, 0] = (np.random.randint(0, GRID_X, batch_size))
@@ -290,7 +113,8 @@ def particle_loop(grid, batch_size=1000):
         particles = np.floor(particles)
         particle_count += len(particles)
 
-        particles = in_bounds(particles, current_radius)
+        particles = in_bounds(particles, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
+                              SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
         no_hits_count = 0
 
@@ -298,10 +122,12 @@ def particle_loop(grid, batch_size=1000):
 
             particles = move(particles)
 
-            particles = in_bounds(particles, current_radius)
+            particles = in_bounds(particles, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
+                                  SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
             # check neighbors and update grid
-            hits, p_indices = check_neighbor(particles, grid, batch_size)
+            hits, p_indices = check_neighbor(particles, grid,
+                                             GRID_X, GRID_Y, GRID_Z, ATTACH_PROB)
 
             # Break if particles have moved five turns with no hits.
             if len(hits) == 0:
@@ -324,9 +150,9 @@ def particle_loop(grid, batch_size=1000):
             # Remove particles that already attached themselves to the cluster
             particles = remove_indices(particles, p_indices)
 
+
 @njit(parallel=True)
 def monte_carlo():
-
     aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
     mold_cov = 0
     for i in prange(NUM_SIMS):
@@ -342,29 +168,10 @@ def monte_carlo():
     mold_cov = mold_cov / NUM_SIMS
     return aggr_grid, mold_cov
 
-def get_layer_count(grid, layer, axis=2):
-    count = 0
-    axes = [0, 1, 2]
-    axes.remove(axis)
-
-    for i in range(grid.shape[axes[0]]):
-        for j in range(grid.shape[axes[1]]):
-            if grid[i, j, layer] > 0:
-                count += 1
-    return count
-
-def get_grid_layer_counts(grid, axis=2):
-    layer_counts = []
-    for i in range(grid.shape[axis]):
-        # print("Layer", z, ":", get_layer_count(grid, z))
-        layer_counts.append(get_layer_count(grid, i))
-    return layer_counts
 
 def plot_slices(grid):
-
     ax_titles = ["X-axis", "Y-axis", "Z-axis"]
     titles = ["Top slice", "Middle slice", "Bottom slice"]
-
 
     slices_per_axis = [
         [grid[0, :, :], grid[GRID_X // 2, :, :], grid[GRID_X, :, :]],
@@ -392,7 +199,6 @@ def plot_slices(grid):
 
 
 def visualize(final_grid, mold_cov_3d, mold_cov_surface, mold_cov_new):
-
     grid_layer_counts = get_grid_layer_counts(final_grid)
     plt.plot(grid_layer_counts)
     plt.xlabel("Layer")
@@ -495,7 +301,7 @@ def main():
     else:
         print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
     ATTACH_PROB = attaching_prob(TEMP, RH)
-    DECAY_PROB = get_decay_prob(0.05, 10)
+    DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
 
     ask_grid_size()
     ask_spawn_point()
