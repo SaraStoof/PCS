@@ -187,7 +187,7 @@ def check_neighbor(particles, grid, batch_size):
             depth_bias = np.exp(-depth_bias_rate * depth)
             # print("x:", x, "y:", y, "z:", z, "depth:", depth, "depth_bias:", depth_bias)
 
-            if np.random.uniform() < ATTACH_PROB + depth_bias:
+            if np.random.uniform() < ATTACH_PROB + (ATTACH_PROB * depth_bias):
                 # Track original particle indices
                 hits_indices.append(original_indices[idx])
 
