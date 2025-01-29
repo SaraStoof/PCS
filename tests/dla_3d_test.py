@@ -7,16 +7,30 @@ from numba import njit, prange
 import matplotlib.pyplot as plt
 import time
 import sys
+from scipy.stats import sem 
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
 from helpers.helpers_user_input import *
 
+
 TIMESTEPS_PER_DAY = 20
 
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
-SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
+
+# To spawn in a corner
+# SPAWN_X, SPAWN_Y, SPAWN_Z = 0, 0, 0
+# SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (True, False), (True, False), (True, False)
+
+# to spawn at an edge
+# SPAWN_X, SPAWN_Y, SPAWN_Z = 0, 0, 50
+# SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (True, False), (True, False), (False, False)
+
+# To spawn at a surface
+SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100
 SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (False, False), (False, False), (False, True)
+
+
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
 NUM_SIMS = 5
@@ -78,7 +92,7 @@ def decay_grid(grid):
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
 @njit
-def particle_loop(grid, batch_size=1000):
+def particle_loop(grid, ATTACH_PROB, DECAY_PROB, batch_size=1000):
     '''
     This is the main loop of the simulation, it runs the simulation for mold growth for
     a certain amount of timesteps by making changes to the inputted grid
@@ -87,12 +101,16 @@ def particle_loop(grid, batch_size=1000):
     # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 5
     particle_count = 0
+    m_history_3d = np.zeros(DAYS)
+    m_history_surf = np.zeros(DAYS)
 
     for i in prange(TIMESTEPS):
         if i % TIMESTEPS_PER_DAY == 0:
             #These things happen once a day
             decay_grid(grid)
-
+            m_history_3d[i // TIMESTEPS_PER_DAY] = coverage_to_m_value(mold_coverage(grid))
+            m_history_surf[i // TIMESTEPS_PER_DAY] = coverage_to_m_value(mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
+                          + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
         # http://datagenetics.com/blog/january32020/index.html
 
         # Theta is the angle in the x-y plane
@@ -159,10 +177,11 @@ def particle_loop(grid, batch_size=1000):
 
             # Remove particles that already attached themselves to the cluster
             particles = remove_indices(particles, p_indices)
+    return m_history_3d, m_history_surf
 
 
 @njit(parallel=True)
-def monte_carlo():
+def monte_carlo(ATTACH_PROB, DECAY_PROB):
     '''
     This function runs the simulation a certain amount of times and returns the average
     grid and mold coverage
@@ -170,12 +189,14 @@ def monte_carlo():
     aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
     mold_cov_3d = 0
     mold_cov_surf = 0
+    history_3d = np.zeros((NUM_SIMS, DAYS))
+    history_surf = np.zeros((NUM_SIMS, DAYS))
 
     for i in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
         grid[SPAWN_X, SPAWN_Y, SPAWN_Z] = 1
-        particle_loop(grid, BATCH_SIZE)
+        history_3d[i], history_surf[i] = particle_loop(grid, ATTACH_PROB, DECAY_PROB)
 
         aggr_grid += grid
         mold_cov_3d += mold_coverage(grid)
@@ -186,109 +207,58 @@ def monte_carlo():
     aggr_grid = aggr_grid/NUM_SIMS
     mold_cov_3d = mold_cov_3d / NUM_SIMS
     mold_cov_surf = mold_cov_surf/ NUM_SIMS
-    return aggr_grid, mold_cov_3d, mold_cov_surf
+    return aggr_grid, mold_cov_3d, mold_cov_surf, history_3d, history_surf
 
 
-def plot_slices(grid):
-    '''
-    This function plots the slices of the final grid, it plots the top, middle and bottom
-    slice for the X, Y and Z-axis
-    '''
-    ax_titles = ["X-axis", "Y-axis", "Z-axis"]
-    titles = ["Top slice", "Middle slice", "Bottom slice"]
+def test_3d():
+    global NUM_SIMS, BATCH_SIZE, TEMP, RH, DAYS, TIMESTEPS, TIMESTEPS_PER_DAY
+    global NO_HITS_MAX, ATTACH_PROB, DECAY_PROB
 
-    slices_per_axis = [
-        [grid[0, :, :], grid[GRID_X // 2, :, :], grid[GRID_X, :, :]],
-        [grid[:, 0, :], grid[:, GRID_Y // 2, :], grid[:, GRID_Y, :]],
-        [grid[:, :, 0], grid[:, :, GRID_Z // 2], grid[:, :, GRID_Z]]
-    ]
-    plt.figure(figsize=(10, 10))
+    temp_list = [5, 30]
+    rh_list = [80, 90, 97, 100]
+    DAYS = 168
+    TIMESTEPS_PER_DAY = 5
+    TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
+    NUM_SIMS = 100
+    BATCH_SIZE = 1000
 
-    for axis, slices in enumerate(slices_per_axis):
-        axes = [GRID_X, GRID_Y, GRID_Z]
-        axes.pop(axis)
+    titles = ['Mould Coverage of 3D simulation', 'Surface Mold Coverage of 3D Simulation']
+    for i in range(len(temp_list)):
+        temp = temp_list[i]
+        TEMP = temp
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5)) 
+        for rh in rh_list:
+            RH = rh
+            ATTACH_PROB = get_attach_prob(TEMP, RH)
+            DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
+            _, _, _, history_3d, history_surf = monte_carlo(ATTACH_PROB, DECAY_PROB)
+            m_mean_3d = np.mean(history_3d, axis=0)
+            m_mean_surf = np.mean(history_surf, axis=0)
+            ci_3d = 1.96 * sem(history_3d, axis=0)
+            ci_surf = 1.96 * sem(history_surf, axis=0)
+            # Plot mean curve
+            axes[0].plot(m_mean_3d, linestyle='-', label=f"RH = {rh}%, Temp = {temp}°C")
+            axes[0].fill_between(range(len(m_mean_3d)), m_mean_3d - ci_3d, m_mean_3d + ci_3d, alpha=0.2)
+            
+            # Plotting mean and confidence intervals for Surface
+            axes[1].plot(m_mean_surf, linestyle='-', label=f"RH = {rh}%, Temp = {temp}°C")
+            axes[1].fill_between(range(len(m_mean_surf)), m_mean_surf - ci_surf, m_mean_surf + ci_surf, alpha=0.2)
 
-        for i, slice in enumerate(slices):
+        # Formatting both plots
+        for idx, ax in enumerate(axes):
+            ax.set_xlabel("Time (days)")
+            ax.set_ylabel("Mould index")
+            ax.set_title(titles[idx])
+            ax.legend()
+            ax.grid(True)
 
-            plt.subplot(3, 3, 3 * axis + i + 1)
-            plt.imshow(slice, cmap='Greens', interpolation='nearest')
-            plt.xlim(0, axes[0])
-            plt.ylim(0, axes[1])
-            plt.title(f"{ax_titles[axis]}, {titles[i]}")
-            plt.axis('off')
-
-            plt.tight_layout()
-
-    plt.show()
-
-
-def visualize(final_grid, mold_cov_3d, mold_cov_surface):
-    '''
-    This function visualizes the final output of the simulations, it first plots the
-    number of particles per layer, then it plots the slices, afterwards it plots the
-    average of the final grid for all the simulations
-    '''
-    grid_layer_counts = get_grid_layer_counts(final_grid)
-    plt.plot(grid_layer_counts)
-    plt.xlabel("Layer")
-    plt.ylabel("Number of particles")
-    plt.title("Number of particles per layer")
-    plt.show()
-
-    print("attach_prob:", ATTACH_PROB)
-    print("decay_prob: ", DECAY_PROB)
-    print("Average mold coverage: ", mold_cov_3d, "%")
-    print("Average mold coverage surface: ", mold_cov_surface, "%")
-    print("M-value: ", coverage_to_m_value(mold_cov_3d))
-    print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
-
-    plot_slices(final_grid)
-
-    # 3D plot
-    x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
-
-    fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection='3d')
-
-    ax.scatter(x, y, z, c='goldenrod', s=GRID_X // 5,
-               marker='s', edgecolor='forestgreen')
-
-    # Set the axes to the fixed grid size
-    ax.set_xlim(0, GRID_X)
-    ax.set_ylim(0, GRID_Y)
-    ax.set_zlim(0, GRID_Z)
-
-    ax.set_title("3D Mold Growth")
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-
-    plt.show()
+        plt.tight_layout()  # Adjust layout to prevent overlap
+        plt.show()
 
 
 def main():
     global NUM_SIMS, BATCH_SIZE, NO_HITS_MAX, TEMP, RH, ATTACH_PROB, DECAY_PROB
-    global GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, SPAWN_X, SPAWN_Y, SPAWN_Z
-    if len(sys.argv) == 5:
-        NUM_SIMS = int(sys.argv[1])
-        BATCH_SIZE = int(sys.argv[2])
-        TEMP = int(sys.argv[3])
-        RH = int(sys.argv[4])
-    else:
-        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
-    ATTACH_PROB = get_attach_prob(TEMP, RH)
-    DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
-
-    GRID_X, GRID_Y, GRID_Z, MAX_RADIUS = ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS)
-    SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = ask_spawn_point(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
-
-    start = time.time()
-    final_grid, mold_cov_3d, mold_cov_surf = monte_carlo()
-    end = time.time()
-
-    print(f"Time taken: {end - start}")
-
-    visualize(final_grid, mold_cov_3d, mold_cov_surf)
+    test_3d()
 
 
 if __name__ == "__main__":

@@ -3,13 +3,10 @@ This file contains the helper functions pertaining to user input
 '''
 
 
-def ask_grid_size():
+def ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS):
     '''
     Handle user input for getting the size of the grid while checking for faulty inputs
     '''
-    # Get user input for grid dimensions
-    global GRID_X, GRID_Y, GRID_Z, MAX_RADIUS
-
     try:
         GRID_X = int(input("Enter max x-coordinate of grid: "))
         GRID_Y = int(input("Enter max y-coordinate of grid: "))
@@ -24,17 +21,15 @@ def ask_grid_size():
 
     print("Grid size: ", GRID_X, GRID_Y, GRID_Z)
     MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
+    return GRID_X, GRID_Y, GRID_Z, MAX_RADIUS
 
 
-def ask_spawn_point():
+def ask_spawn_point(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE):
     '''
     Handle user input for getting the spawn point of the initial particle while checking
     for faulty inputs
     '''
     # Ask for spawn point
-    global SPAWN_X, SPAWN_Y, SPAWN_Z
-    global SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE
-
     try:
 
         SPAWN_X = int(input("Enter x-coordinate of spawn point: "))
@@ -60,3 +55,4 @@ def ask_spawn_point():
     print("Spawn point: ", SPAWN_X, SPAWN_Y, SPAWN_Z)
     print("On edge: ", SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
     print("Radius: ", MAX_RADIUS)
+    return SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE
