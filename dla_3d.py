@@ -192,7 +192,7 @@ def monte_carlo():
 def plot_slices(grid):
     '''
     This function plots the slices of the final grid, it plots the top, middle and bottom
-    slice for the X, Y and Z-axis
+    slice for the X, Y and Z-axis~
     '''
     ax_titles = ["X-axis", "Y-axis", "Z-axis"]
     titles = ["Top slice", "Middle slice", "Bottom slice"]
