@@ -5,7 +5,7 @@ and 'dla_3dsim.py', these functions return a single value as output
 from numba import njit, prange
 import numpy as np
 
-@njit
+@njit(cache=True)
 def get_attach_prob(TEMP, RH):
     '''
     This function returns a float between 0 and 1, which denotes the probability of a
@@ -43,7 +43,7 @@ def get_decay_prob(ATTACH_PROB, decay_prob_multiplier, exp_dropoff):
     return np.exp(-ATTACH_PROB * exp_dropoff) * decay_prob_multiplier
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=True)
 def mold_coverage(grid, grid_size = 5):
     '''
     This function takes a grid and calculates how much mold covers the surface of
@@ -76,6 +76,30 @@ def mold_coverage(grid, grid_size = 5):
     return (covered_cells / total_cells) * 100
 
 
+@njit(parallel=True, cache=True)
+def mold_cov_surface(grid, grid_size = 5):
+    #Uses grid sampling to smarter estimate mold coverage. Divides the grid into 10x10 squares and counts the number of squares with mold.
+    height, width = grid.shape
+    cells_x = width // grid_size
+    cells_y = height // grid_size
+
+    covered_cells = 0
+    total_cells = cells_x * cells_y
+
+    for i in prange(cells_y):
+        for j in prange(cells_x):
+            # Extract grid cell
+            cell = grid[i * grid_size:(i + 1) * grid_size, j * grid_size:(j + 1) * grid_size]
+
+            # Check if there's any mold in the cell
+            if np.any(cell > 0):  # Assuming mold is white (255) and background is black (0)
+                covered_cells += 1
+    if covered_cells == 1: 
+        return 0
+    
+    return (covered_cells / total_cells) * 100
+
+@njit(cache=True)
 def coverage_to_m_value(cov):
     '''
     This function converts the given mold coverage into M-value

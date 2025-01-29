@@ -3,6 +3,7 @@
 import numpy as np 
 from numba import njit, prange
 import matplotlib.pyplot as plt 
+from scipy.stats import sem 
 
 #Variables to test
 #These variables should later on have permanent values, unliked temp and RH which may change values
@@ -195,60 +196,76 @@ def monte_carlo(GRID_SIZE, ATTACH_PROB, TIMESTEPS, NUM_SIMS, DECAY_PROB, DAYS):
 
     return aggr_grid/NUM_SIMS, mold_cov/NUM_SIMS, m_histories
 
-#final_grid, mold_cov, m_histories = monte_carlo(GRID_SIZE, ATTACH_PROB, TIMESTEPS, NUM_SIMS, DECAY_PROB, DAYS)
-#print("attach_prob:" , ATTACH_PROB)
-#print("decay_prob: ", DECAY_PROB)
-#print("Average mold coverage: ", mold_cov , "%")
-#print("M-value: ", coverage_to_m_value(mold_cov))
-#print("Temperature: "   , Temp)
-#print("Relative Humidity: " , RH)
-# #Plot the result
-#plt.imshow(final_grid, cmap='Greys', interpolation='nearest')
-#plt.show()
-
-#Graphs to compare with experimental data
 RH_list = [80, 90, 97, 100]
 Temp_list = [5]
+NUM_RUNS = 10  # Number of times to run the simulation
+
 plt.figure(figsize=(8, 5))
 
 for i in RH_list:
     for j in Temp_list:
         attach_prob = attaching_prob(j, i)
         decay_prob = get_decay_prob(attach_prob, decay_prob_multiplier, exponential_drop_off)
-        _,_, m_histories = monte_carlo(GRID_SIZE, attach_prob, TIMESTEPS, NUM_SIMS, decay_prob, DAYS)
-        plt.plot(m_histories[0],linestyle='-', label=f"RH = {i}%, Temp = {j}C")
 
+        all_histories = []  # Store all runs
 
+        for _ in range(NUM_RUNS):
+            _, _, m_histories = monte_carlo(GRID_SIZE, attach_prob, TIMESTEPS, NUM_SIMS, decay_prob, DAYS)
+            all_histories.append(m_histories[0])  # Store first history
 
+        all_histories = np.array(all_histories)  # Convert to array
 
+        # Compute mean and confidence interval (95% CI)
+        mean_values = np.mean(all_histories, axis=0)
+        ci = 1.96 * sem(all_histories, axis=0)  # 95% confidence interval
+
+        # Plot mean curve
+        plt.plot(mean_values, linestyle='-', label=f"RH = {i}%, Temp = {j}C")
+
+        # Plot confidence interval as shaded area
+        plt.fill_between(range(len(mean_values)), mean_values - ci, mean_values + ci, alpha=0.2)
 
 plt.xlabel("Time (days)")
 plt.ylabel("Mould index")
-plt.title("Plot of Given Data Points")
+plt.title("Plot of Given Data Points with Confidence Intervals")
 plt.legend()
 plt.grid(True)
 
 # Show plot
 plt.show()
 
-#Graphs to compare with experimental data
 RH_list = [80, 90, 97, 100]
 Temp_list = [30]
+NUM_RUNS = 10  # Number of times to run the simulation
+
 plt.figure(figsize=(8, 5))
 
 for i in RH_list:
     for j in Temp_list:
         attach_prob = attaching_prob(j, i)
         decay_prob = get_decay_prob(attach_prob, decay_prob_multiplier, exponential_drop_off)
-        _,_, m_histories = monte_carlo(GRID_SIZE, attach_prob, TIMESTEPS, NUM_SIMS, decay_prob, DAYS)
-        plt.plot(m_histories[0],linestyle='-', label=f"RH = {i}%, Temp = {j}C")
 
+        all_histories = []  # Store all runs
 
+        for _ in range(NUM_RUNS):
+            _, _, m_histories = monte_carlo(GRID_SIZE, attach_prob, TIMESTEPS, NUM_SIMS, decay_prob, DAYS)
+            all_histories.append(m_histories[0])  # Store first history
 
+        all_histories = np.array(all_histories)  # Convert to array
+
+        # Compute mean and confidence interval (95% CI)
+        mean_values = np.mean(all_histories, axis=0)
+        ci = 1.96 * sem(all_histories, axis=0)  # 95% confidence interval
+
+        # Plot mean curve
+        plt.plot(mean_values, linestyle='-', label=f"RH = {i}%, Temp = {j}C")
+
+        # Plot confidence interval as shaded area
+        plt.fill_between(range(len(mean_values)), mean_values - ci, mean_values + ci, alpha=0.2)
 
 plt.xlabel("Time (days)")
 plt.ylabel("Mould index")
-plt.title("Plot of Given Data Points")
+plt.title("Plot of Given Data Points with Confidence Intervals")
 plt.legend()
 plt.grid(True)
 
