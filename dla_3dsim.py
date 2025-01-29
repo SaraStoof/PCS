@@ -6,25 +6,26 @@ simulations put displays every timestep in realtime
 import numpy as np
 from numba import njit, prange
 import matplotlib.pyplot as plt
+import time
+import sys
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
 from helpers.helpers_user_input import *
 
-# Constants
+TIMESTEPS_PER_DAY = 20
+
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
 SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
 SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (False, False), (False, False), (False, True)
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
-GRID_SIZE = 100
-RADIUS = (GRID_SIZE // 2) + 5  # Maximum radius of the circle
-center_index = GRID_SIZE // 2
 NUM_SIMS = 5
 TEMP = 30
 RH = 97
+BATCH_SIZE = 1000
+NO_HITS_MAX = 5
 DAYS = 6
-TIMESTEPS_PER_DAY = 20
 TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 
@@ -76,26 +77,26 @@ def decay_grid(grid):
 
 
 @njit
-def loop_step(reached_edge, grid, particle, current_radius, no_hits_count):
+def loop_step(reached_edge, grid, particles, current_radius, no_hits_count):
     '''
     Performs one step in the loop, returns the updated current_radius and a boolean
     checking if the edge has been reached
     '''
-    while len(particle) > 0:
+    while len(particles) > 0:
 
-        particle = move(particle)
+        particles = move(particles)
 
-        particle = in_bounds(particle, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
+        particles = in_bounds(particles, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
                               SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
         # check neighbors and update grid
-        hits, p_indices = check_neighbor(particle, grid,
+        hits, p_indices = check_neighbor(particles, grid,
                                              GRID_X, GRID_Y, GRID_Z, ATTACH_PROB)
 
         # Break if particles have moved five turns with no hits.
         if len(hits) == 0:
             no_hits_count += 1
-            if no_hits_count > 5:
+            if no_hits_count > NO_HITS_MAX:
                 break
         else:
             no_hits_count = 0
@@ -104,14 +105,14 @@ def loop_step(reached_edge, grid, particle, current_radius, no_hits_count):
         for hit in hits:
             x, y, z = int(hit[0]), int(hit[1]), int(hit[2])
             grid[x, y, z] = 1
-            dist_to_seed = np.linalg.norm(hit - np.array([center_index, center_index, GRID_SIZE]))
+            dist_to_seed = np.linalg.norm(hit - np.array([SPAWN_X, SPAWN_Y, SPAWN_Z]))
             if dist_to_seed >= current_radius - 1 and reached_edge == False:
                 current_radius += 5
-                if current_radius >= RADIUS:
+                if current_radius >= MAX_RADIUS:
                     reached_edge = True
 
-        # Remove particles that already attached themselves to the cluster
-        particle = remove_indices(particle, p_indices)
+        # Remove particless that already attached themselves to the cluster
+        particles = remove_indices(particles, p_indices)
     return current_radius, reached_edge
 
 
@@ -127,17 +128,8 @@ def particle_loop(grid, sim_num, batch_size=1000):
     particle_count = 0
 
     for t in range(TIMESTEPS):
-        ax.clear()
-        x, y, z = np.where(grid > 0)
-        ax.scatter(x, y, z, c='goldenrod', s=GRID_SIZE //
-                   5, marker='s', edgecolor='forestgreen')
-        ax.set_title(f"3D Mold Growth - Timestep {t+1}, Simulation number {sim_num+1}")
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.set_zlabel("Z")
-        plt.draw()
-        plt.pause(0.1)
         if t % TIMESTEPS_PER_DAY == 0:
+            #These things happen once a day
             decay_grid(grid)
 
         # http://datagenetics.com/blog/january32020/index.html
@@ -147,112 +139,185 @@ def particle_loop(grid, sim_num, batch_size=1000):
         theta = np.random.uniform(0, np.pi * 2, batch_size)
         phi = np.random.uniform(np.pi, 2 * np.pi, batch_size)
 
-        # Initialize an empty array to hold the particle coordinates
-        particle = np.zeros((batch_size, 3))
+        # Initialize an empty array to hold the particles coordinates
+        particles = np.zeros((batch_size, 3))
 
         if reached_edge == False:
-            # Populate the particle array manually
-            particle[:, 0] = (center_index + current_radius *
-                              np.sin(phi) * np.cos(theta))
-            particle[:, 1] = (center_index + current_radius *
-                              np.sin(phi) * np.sin(theta))
-            particle[:, 2] = (GRID_SIZE -
-                              nonneg_arr(current_radius * np.cos(phi)))
+            # Populate the particles array manually
+            particles[:, 0] = new_x_coords(theta, phi, current_radius,
+                                           SPAWN_ON_X_EDGE, SPAWN_X)
+            particles[:, 1] = new_y_coords(theta, phi, current_radius,
+                                           SPAWN_ON_Y_EDGE, SPAWN_Y)
+            particles[:, 2] = new_z_coords(phi, current_radius,
+                                           SPAWN_ON_Z_EDGE, SPAWN_Z)
 
         else:
-            particle[:, 0] = (np.random.randint(0, GRID_SIZE, batch_size))
-            particle[:, 1] = (np.random.randint(0, GRID_SIZE, batch_size))
-            particle[:, 2] = (np.random.randint(0, GRID_SIZE, batch_size))
+            particles[:, 0] = (np.random.randint(0, GRID_X, batch_size))
+            particles[:, 1] = (np.random.randint(0, GRID_Y, batch_size))
+            particles[:, 2] = (np.random.randint(0, GRID_Z, batch_size))
 
-        if len(particle) > current_radius**3:
-            particle = particle[:current_radius**3]
+        if len(particles) > current_radius**3:
+            particles = particles[:current_radius**3]
 
-        particle = np.floor(particle)
-        particle_count += len(particle)
+        particles = np.floor(particles)
+        particle_count += len(particles)
 
-        particle = in_bounds(particle, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
+        particles = in_bounds(particles, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
                               SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
         no_hits_count = 0
+        current_radius, reached_edge = loop_step(reached_edge, grid, particles, current_radius, no_hits_count)
+        
+        ax.clear()
+        x, y, z = np.where(grid > 0)
+        ax.scatter(x, y, z, c='goldenrod', s=GRID_X//
+                   5, marker='s', edgecolor='forestgreen')
+        ax.set_title(f"3D Mold Growth - Timestep {t+1}, Simulation number {sim_num+1}")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.set_xlim(0, GRID_X)
+        ax.set_ylim(0, GRID_Y)
+        ax.set_zlim(0, GRID_Z)
 
-        current_radius, reached_edge = loop_step(reached_edge, grid, particle, current_radius, no_hits_count)
+        plt.draw()
+        plt.pause(0.1)
 
     return
 
 # Initialize Plot
 fig = plt.figure(figsize=(8, 6))
 ax = fig.add_subplot(111, projection='3d')
-
 def monte_carlo():
     '''
     This function runs the simulation a certain amount of times and returns the average
     grid and mold coverage
     '''
-    aggr_grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-    for i in range(NUM_SIMS):
+    aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
+    mold_cov_3d = 0
+    mold_cov_surf = 0
+
+    for i in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
-        grid = np.zeros((GRID_SIZE + 1, GRID_SIZE + 1, GRID_SIZE + 1))
-        grid[center_index, center_index, GRID_SIZE] = 1   # IMPORTANDT: REMOVED THE MINUS 1 KEEP LIKE THIS
-        particle_loop(grid, i)
+        grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
+        grid[SPAWN_X, SPAWN_Y, SPAWN_Z] = 1
+        particle_loop(grid, i, BATCH_SIZE)
 
         aggr_grid += grid
+        mold_cov_3d += mold_coverage(grid)
+        
+        mold_cov_surf += (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
+                          + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
 
     aggr_grid = aggr_grid/NUM_SIMS
-    return aggr_grid
+    mold_cov_3d = mold_cov_3d / NUM_SIMS
+    mold_cov_surf = mold_cov_surf/ NUM_SIMS
+    return aggr_grid, mold_cov_3d, mold_cov_surf
 
-ask_grid_size()
-ask_spawn_point()
 
-ATTACH_PROB = get_attach_prob(TEMP, RH)
-DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
-final_grid = monte_carlo()
-mold_grid = final_grid.copy()
-mold_grid[mold_grid > 0.02] = 1
+def plot_slices(grid):
+    '''
+    This function plots the slices of the final grid, it plots the top, middle and bottom
+    slice for the X, Y and Z-axis
+    '''
+    ax_titles = ["X-axis", "Y-axis", "Z-axis"]
+    titles = ["Top slice", "Middle slice", "Bottom slice"]
 
-mold_cov_3d = np.mean(mold_grid) * 100
-mold_cov_surface = np.mean(mold_grid[:, :, GRID_SIZE]) * 100
-#--- TEST PER LAYER HOW MANY PARTICLES ARE IN THE GRID ---
-grid_layer_counts = get_grid_layer_counts(final_grid)
-print(np.sum(grid_layer_counts))
+    slices_per_axis = [
+        [grid[0, :, :], grid[GRID_X // 2, :, :], grid[GRID_X, :, :]],
+        [grid[:, 0, :], grid[:, GRID_Y // 2, :], grid[:, GRID_Y, :]],
+        [grid[:, :, 0], grid[:, :, GRID_Z // 2], grid[:, :, GRID_Z]]
+    ]
+    plt.figure(figsize=(10, 10))
 
-# visualize grid_layer_counts in a plot
-fig, ax = plt.subplots(figsize=(6, 6))
-ax.plot(grid_layer_counts)
-ax.set_xlabel("Layer")
-ax.set_ylabel("Number of particles")
-ax.set_title("Number of particles per layer")
-plt.draw()
+    for axis, slices in enumerate(slices_per_axis):
+        axes = [GRID_X, GRID_Y, GRID_Z]
+        axes.pop(axis)
 
-# -------------------------------------------------------
+        for i, slice in enumerate(slices):
 
-print("attach_prob:", ATTACH_PROB)
-print("decay_prob: ", DECAY_PROB)
-print("Average mold coverage: ", mold_cov_3d, "%")
-print("M-value: ", coverage_to_m_value(mold_cov_3d))
-print("Average mold coverage surface: ", mold_cov_surface, "%")
-print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
-print("Temperature: ", TEMP)
-print("Relative Humidity: ", RH)
+            plt.subplot(3, 3, 3 * axis + i + 1)
+            plt.imshow(slice, cmap='Greens', interpolation='nearest')
+            plt.xlim(0, axes[0])
+            plt.ylim(0, axes[1])
+            plt.title(f"{ax_titles[axis]}, {titles[i]}")
+            plt.axis('off')
 
-# Plot the upper slice of the mold.
-fig, ax = plt.subplots(figsize=(6, 6))  # Ensure a 2D context for imshow
-ax.imshow(final_grid[:, :, GRID_SIZE], cmap='Greens', interpolation='nearest')
-ax.set_title("Middle Slice of the Mold")
-plt.draw()
+            plt.tight_layout()
 
-x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
+    plt.show()
 
-# Plot the 3D grid
-fig = plt.figure(figsize=(8, 6))
-ax = fig.add_subplot(111, projection='3d')
 
-scatter = ax.scatter(x, y, z, c='goldenrod', s=GRID_SIZE //
-                     5, marker='s', edgecolor='forestgreen')
 
-# Set plot labels
-ax.set_title("3D Mold Growth")
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
+def visualize(final_grid, mold_cov_3d, mold_cov_surface):
+    '''
+    This function visualizes the final output of the simulations, it first plots the
+    number of particles per layer, then it plots the slices, afterwards it plots the
+    average of the final grid for all the simulations
+    '''
+    grid_layer_counts = get_grid_layer_counts(final_grid)
+    plt.figure(figsize=(8, 6))
+    plt.plot(grid_layer_counts)
+    plt.xlabel("Layer")
+    plt.ylabel("Number of particles")
+    plt.title("Number of particles per layer")
+    plt.show()
 
-plt.show()
+    print("attach_prob:", ATTACH_PROB)
+    print("decay_prob: ", DECAY_PROB)
+    print("Average mold coverage: ", mold_cov_3d, "%")
+    print("Average mold coverage surface: ", mold_cov_surface, "%")
+    print("M-value: ", coverage_to_m_value(mold_cov_3d))
+    print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
+
+    plot_slices(final_grid)
+
+    # 3D plot
+    x, y, z = np.where(final_grid >= 1 / NUM_SIMS)
+
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    ax.scatter(x, y, z, c='goldenrod', s=GRID_X // 5,
+               marker='s', edgecolor='forestgreen')
+
+    # Set the axes to the fixed grid size
+    ax.set_xlim(0, GRID_X)
+    ax.set_ylim(0, GRID_Y)
+    ax.set_zlim(0, GRID_Z)
+
+    ax.set_title("3D Mold Growth")
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    plt.show()
+
+
+def main():
+    global NUM_SIMS, BATCH_SIZE, NO_HITS_MAX, TEMP, RH, ATTACH_PROB, DECAY_PROB
+    global GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, SPAWN_X, SPAWN_Y, SPAWN_Z
+    if len(sys.argv) == 5:
+        NUM_SIMS = int(sys.argv[1])
+        BATCH_SIZE = int(sys.argv[2])
+        TEMP = int(sys.argv[3])
+        RH = int(sys.argv[4])
+    else:
+        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
+    ATTACH_PROB = get_attach_prob(TEMP, RH)
+    DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
+
+    GRID_X, GRID_Y, GRID_Z, MAX_RADIUS = ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS)
+    SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = ask_spawn_point(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
+
+    start = time.time()
+    final_grid, mold_cov_3d, mold_cov_surf = monte_carlo()
+    end = time.time()
+
+    print(f"Time taken: {end - start}")
+
+    visualize(final_grid, mold_cov_3d, mold_cov_surf)
+
+
+if __name__ == "__main__":
+    main()

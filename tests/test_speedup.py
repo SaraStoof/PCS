@@ -1,6 +1,6 @@
 import subprocess
 
-base_command = ["python3", "dla_3d.py"]
+base_command = ["python3", "../dla_3d.py"]
 
 num_sims = ['1', '2', '5', '10', '100']
 batch_sizes = ['100', '1000']

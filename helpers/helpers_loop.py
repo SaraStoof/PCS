@@ -10,7 +10,7 @@ neighbor_offsets = np.array([
     [0, 0, 1], [0, 0, -1]   # +z, -z
 ])
 
-@njit
+@njit(cache=True)
 def in_bounds_neighbors(particles, GRID_X, GRID_Y, GRID_Z):
     '''
     This function checks if particles are within grid boundaries
@@ -22,7 +22,7 @@ def in_bounds_neighbors(particles, GRID_X, GRID_Y, GRID_Z):
     )
 
 
-@njit
+@njit(cache=True)
 def in_bounds(particles, radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
               SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE):
     '''
@@ -38,7 +38,7 @@ def in_bounds(particles, radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
     ]
 
 
-@njit
+@njit(cache=True)
 def move(particles):
     '''
     This function moves a particle to a random coordinate by -1 or by 1
@@ -46,7 +46,7 @@ def move(particles):
     return particles + np.random.randint(-1, 2, (len(particles), 3))
 
 
-@njit
+@njit(cache=True)
 def dist_to_surface(x, y, z, GRID_X, GRID_Y, GRID_Z):
     '''
     This function returns the shortest distance to the surface from a given point
@@ -56,7 +56,7 @@ def dist_to_surface(x, y, z, GRID_X, GRID_Y, GRID_Z):
     return min(dists)
 
 
-@njit
+@njit(cache=True)
 def check_neighbor(particles, grid, GRID_X, GRID_Y, GRID_Z, ATTACH_PROB):
     '''
     This function checks the neighbors of every particle in the grid that could attach
@@ -95,7 +95,7 @@ def check_neighbor(particles, grid, GRID_X, GRID_Y, GRID_Z, ATTACH_PROB):
 
     return hits, p_indices
 
-@njit
+@njit(cache=True)
 def nonneg_arr(arr):
     '''
     This function flattens all negative values to 0, making the array nonnegative.
@@ -103,7 +103,7 @@ def nonneg_arr(arr):
     arr[np.where(arr < 0.0)] = 0
     return arr
 
-@njit
+@njit(cache=True)
 def remove_indices(arr, indices_to_remove):
     '''
     This function is needed to bypass numba's limitations with reagrds to
@@ -120,7 +120,7 @@ def remove_indices(arr, indices_to_remove):
     return arr[mask]
 
 
-@njit
+@njit(cache=True)
 def new_x_coords(theta, phi, current_radius, SPAWN_ON_X_EDGE, SPAWN_X):
     '''
     This function returns lists of coordinates for the new batch of particles
@@ -135,7 +135,7 @@ def new_x_coords(theta, phi, current_radius, SPAWN_ON_X_EDGE, SPAWN_X):
     return (SPAWN_X + current_radius * np.sin(phi) * np.cos(theta))
 
 
-@njit
+@njit(cache=True)
 def new_y_coords(theta, phi, current_radius, SPAWN_ON_Y_EDGE, SPAWN_Y):
     '''
     This function returns lists of coordinates for the new batch of particles
@@ -150,7 +150,7 @@ def new_y_coords(theta, phi, current_radius, SPAWN_ON_Y_EDGE, SPAWN_Y):
     return (SPAWN_Y + current_radius * np.sin(phi) * np.sin(theta))
 
 
-@njit
+@njit(cache=True)
 def new_z_coords(phi, current_radius, SPAWN_ON_Z_EDGE, SPAWN_Z):
     '''
     This function returns lists of coordinates for the new batch of particles
