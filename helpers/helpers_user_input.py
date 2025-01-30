@@ -24,6 +24,25 @@ def ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS):
     return GRID_X, GRID_Y, GRID_Z, MAX_RADIUS
 
 
+def ask_n_spawn_points():
+    '''
+    Handle user input for getting the size of the grid while checking for faulty inputs
+    '''
+    try:
+        num_spawn_points = int(input("Enter how many random spawn points to initialize: "))
+
+        if num_spawn_points <= 0:
+            raise ValueError("Number of spawn points cannot be 0 or less.")
+
+    except (ValueError, TypeError):
+        print("Invalid number of spawn points. Defaulting to 5.")
+        num_spawn_points = 5
+
+    print("Number of spawn points: ", num_spawn_points)
+
+    return num_spawn_points
+
+
 def ask_spawn_point(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE):
     '''
     Handle user input for getting the spawn point of the initial particle while checking

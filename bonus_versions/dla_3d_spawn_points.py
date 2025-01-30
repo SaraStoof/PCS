@@ -1,32 +1,32 @@
 '''
-The main file for the simulation, uses the other helper functions to run the simulations
+This file was used to test spawning multiple seeds at the same time and plots
+the mold coverage index against time in days. The plots can be found in the 'plots' directory.
 '''
 
-import numpy as np
-from numba import njit, prange
-import matplotlib.pyplot as plt
-import time
 import sys
+sys.path.append("..")
+import matplotlib.pyplot as plt
+from numba import njit, prange
+import numpy as np
+from scipy.stats import sem
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
 from helpers.helpers_user_input import *
 
-TIMESTEPS_PER_DAY = 20
+TIMESTEPS_PER_DAY = 15
 
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
-SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
-SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (
-    False, False), (False, False), (False, True)
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
-NUM_SIMS = 5
+NUM_SIMS = 10
 TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
 NO_HITS_MAX = 5
-DAYS = 6
+DAYS = 10
 TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
+
 
 
 @njit(parallel=True)
@@ -79,7 +79,7 @@ def decay_grid(grid):
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
 @njit
-def particle_loop(grid, batch_size=1000):
+def particle_loop(grid, SPAWN_X, SPAWN_Y, SPAWN_Z, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, batch_size=1000):
     '''
     This is the main loop of the simulation, it runs the simulation for mold growth for
     a certain amount of timesteps by making changes to the inputted grid
@@ -88,11 +88,16 @@ def particle_loop(grid, batch_size=1000):
     # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 5
     particle_count = 0
+    m_history_3d = np.zeros(DAYS)
+    m_history_surf = np.zeros(DAYS)
 
     for i in prange(TIMESTEPS):
         if i % TIMESTEPS_PER_DAY == 0:
             # These things happen once a day
             decay_grid(grid)
+            m_history_3d[i // TIMESTEPS_PER_DAY] = mold_coverage(grid)
+            m_history_surf[i // TIMESTEPS_PER_DAY] = (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
+                                                      + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
 
         # http://datagenetics.com/blog/january32020/index.html
 
@@ -160,34 +165,48 @@ def particle_loop(grid, batch_size=1000):
 
             # Remove particles that already attached themselves to the cluster
             particles = remove_indices(particles, p_indices)
+    return m_history_3d, m_history_surf
 
 
-@njit(parallel=True)
-def monte_carlo():
+def monte_carlo(n_spawn_points):
     '''
-    This function runs the simulation a certain amount of times and returns the average
+    This function runs the simulation a certain amount of times for a certain amount of spawning points and returns the average
     grid and mold coverage
     '''
     aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
-    mold_cov_3d = 0
-    mold_cov_surf = 0
 
-    for i in prange(NUM_SIMS):
+    # To calculate the mold_coverage per day.
+    m_cov_3d = np.zeros((NUM_SIMS, DAYS))
+    m_cov_surf = np.zeros((NUM_SIMS, DAYS))
+    history_3d = np.zeros((NUM_SIMS, DAYS))
+    history_surf = np.zeros((NUM_SIMS, DAYS))
+
+    for i in range(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
-        grid[SPAWN_X, SPAWN_Y, SPAWN_Z] = 1
-        particle_loop(grid, BATCH_SIZE)
+        for _ in range(n_spawn_points):
+            # Initialize a random spawning point
+            point = np.random.randint(0, 101, size=3)
+            grid[point[0], point[1], point[2]] = 1
+            SPAWN_X, SPAWN_Y, SPAWN_Z = int(point[0]), int(point[1]), int(point[2])
+            SPAWN_ON_X_EDGE = (SPAWN_X == 0, SPAWN_X == GRID_X)
+            SPAWN_ON_Y_EDGE = (SPAWN_Y == 0, SPAWN_Y == GRID_Y)
+            SPAWN_ON_Z_EDGE = (SPAWN_Z == 0, SPAWN_Z == GRID_Z)
+            hist_3d, hist_surf = particle_loop(
+                grid, SPAWN_X, SPAWN_Y, SPAWN_Z, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, BATCH_SIZE)
+
+            # Aggregate the mold coverage of all the random spawning points per simulation
+            history_3d[i] += hist_3d
+            history_surf[i] += hist_surf
+            grid += grid
+
+        # Calculate the mold index.
+        m_cov_3d[i] = [coverage_to_m_value(history_3d[i, j]) for j in range(DAYS)]
+        m_cov_surf[i] = [coverage_to_m_value(history_surf[i, j]) for j in range(DAYS)]
 
         aggr_grid += grid
-        mold_cov_3d += mold_coverage(grid)
-
-        mold_cov_surf += (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
-                          + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
-
     aggr_grid = aggr_grid/NUM_SIMS
-    mold_cov_3d = mold_cov_3d / NUM_SIMS
-    mold_cov_surf = mold_cov_surf / NUM_SIMS
-    return aggr_grid, mold_cov_3d, mold_cov_surf
+    return aggr_grid, m_cov_3d, m_cov_surf
 
 
 def plot_slices(grid):
@@ -276,20 +295,15 @@ def main():
         TEMP = int(sys.argv[3])
         RH = int(sys.argv[4])
     else:
-        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ",
-              NUM_SIMS, BATCH_SIZE, TEMP, RH)
+        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
     ATTACH_PROB = get_attach_prob(TEMP, RH)
     DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
 
     GRID_X, GRID_Y, GRID_Z, MAX_RADIUS = ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS)
-    SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = ask_spawn_point(
-        GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
+    n_spawn_points = ask_n_spawn_points()
 
-    start = time.time()
-    final_grid, mold_cov_3d, mold_cov_surf = monte_carlo()
-    end = time.time()
+    final_grid, mold_cov_3d, mold_cov_surf = monte_carlo(n_spawn_points)
 
-    print(f"Time taken: {end - start}")
 
     visualize(final_grid, mold_cov_3d, mold_cov_surf)
 
