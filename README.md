@@ -5,6 +5,8 @@ Sara Stoof \
 Oskar Linke \
 Windar Mazzori
 
+<img src="mold_spawning.gif" width="450">
+
 # 3D Mold modelling
 The aim of this project is to simulate mold growth in 3D using DLA (diffusion-limited aggregation). The main file ``dla_3d.py`` runs a set number of simulations based on the given runtime arguments.
 
