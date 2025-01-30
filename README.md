@@ -15,6 +15,12 @@ Install using ``pip install numpy``
 Install using ``pip install numba`` 
 * Matplotlib, this is used to visualize the final grid. \
 Install using ``pip install matplotlib``
+* Scipy, this is used to calculate the calculate the standare errror mean for plotting. \
+Install using ``pip install scipy``
+* Dash, this is used as the framework for the GUI. \
+Install using ``pip install dash``
+* Plotly, this is used to plot the graphs in the GUI. \
+Install using ``pip install plotly``
 
 # Runtime instructions
 To start the program, run ``python3 dla_3d.py <NUM_SIMS> <BATCH_SIZE> <TEMP> <RH>`` where every value between brackets is a variable. If you simply run ``python3 dla_3d.py`` (or if you don't run it with the correct amount of arguments) the default values will be used instead.
@@ -26,6 +32,7 @@ The default for this is 1000.
 The default for this is 30.
 * ``RH`` is the relative humidity, which also influences the growth and decay of particles. \
 The default for this is 97.
+Then follow the terminal instructions by choosing the grid dimensions and spawn point coordinates. The default is respectively 100x100x100 and (50, 50, 100).
 
 # Output
 Running ``dla_3d.py`` gives some data and a few plots as output.
@@ -34,3 +41,23 @@ All data is outputted to ``stdin``. The first line prints the time taken to run 
 
 ## Plots
 The first plot is the number of particles per layer. The second plot is a horizontal slice of the top layer.  The third plot is a vertical slice through the center. The last plot is a 3D plot of the average grid of every simulation run.
+
+# Instructions to Run the Tests
+## Test 2D: ``2d_test/2d_test.py``
+This will result in 2 plots of the average mold coverage with varying temperature and relative humidity values. Which can be seen in the '2d_test/plots' directory. 
+
+## Test 3D: ``3d_test/3d_test.py``
+This test was performed on different spawning points (surface, edge, corner). It results in 4 plots of the average volumetric and surface mold coverage with varying temperature and relative humidity values. Testing these spawning points can be done by uncommenting and commenting some globals in the script itself. Which can be seen in the '2d_test/plots' directory. 
+
+## Test Speedup: ``test_speedup/test_speedup.py``
+This test is a script that executes our DLA implementation with varying parameters such as num_sims, batch_size and no_hits_max to identify the speedup Numba gives. The no_hits_max parameter determines how long the particles loop without touching the cluster before breaking the loop. We used the results from these tests to determine the optimal no_hits_max. We visualized our results by running our script ``test_speedup/visualize_speedup.py``. The resulting plots can be found in the 'test_speedup/plots' directory. 
+
+## Test Multiple Spawning Points
+
+
+# Intructions for Bonus Versions
+Apart from the main file `dla_3.py`we have bonus versions of our implementation. These versions include cool features we wanted to include. 
+## gui
+## sim
+## 2d
+## spawning points
