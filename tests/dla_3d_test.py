@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import time
 import sys
 from scipy.stats import sem 
+import sys
+sys.path.append("..")
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
@@ -204,6 +206,7 @@ def monte_carlo(ATTACH_PROB, DECAY_PROB):
         mold_cov_surf += (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
                           + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
 
+    print(history_3d.shape)
     aggr_grid = aggr_grid/NUM_SIMS
     mold_cov_3d = mold_cov_3d / NUM_SIMS
     mold_cov_surf = mold_cov_surf/ NUM_SIMS
@@ -219,10 +222,10 @@ def test_3d():
     DAYS = 168
     TIMESTEPS_PER_DAY = 5
     TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
-    NUM_SIMS = 100
+    NUM_SIMS = 5
     BATCH_SIZE = 1000
 
-    titles = ['Mould Coverage of 3D simulation', 'Surface Mold Coverage of 3D Simulation']
+    titles = ['Mold Coverage of 3D simulation', 'Surface Mold Coverage of 3D Simulation']
     for i in range(len(temp_list)):
         temp = temp_list[i]
         TEMP = temp
@@ -247,7 +250,7 @@ def test_3d():
         # Formatting both plots
         for idx, ax in enumerate(axes):
             ax.set_xlabel("Time (days)")
-            ax.set_ylabel("Mould index")
+            ax.set_ylabel("Mold index")
             ax.set_title(titles[idx])
             ax.legend()
             ax.grid(True)

@@ -1,3 +1,7 @@
+'''
+This script visualizes the speedup achieved with Numba under varying parameters. The results can be seen in the 'plots' directory. 
+'''
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -144,11 +148,11 @@ def plot_speedup_vs_numsims_no_hits_max(time, time_njit, num_sims, no_hits_max):
 if __name__ == "__main__":
     num_sims, time, batch_size, timesteps, \
         no_hits_max, mold_cov_3d, mold_cov_surface \
-        = read_txt_file('../speedup_results/result_normal.txt')
+        = read_txt_file('results/result_normal.txt')
 
     num_sims_njit, time_njit, batch_size_njit, timesteps_njit, \
         no_hits_max_njit, mold_cov_3d_njit, mold_cov_surface_njit \
-        = read_txt_file('../speedup_results/result_njit.txt')
+        = read_txt_file('results/result_njit.txt')
 
     plot_speedup_vs_numsims_batch_size(time, time_njit, num_sims, batch_size)
     plot_speedup_vs_numsims_no_hits_max(time, time_njit, num_sims, no_hits_max)
