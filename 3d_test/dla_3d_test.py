@@ -1,20 +1,19 @@
 '''
 This file was used to calculate the average volumetric and surface mold coverage of our 3D model on varying spawning points (surface, edge, corner).
 We tested this with varying RH and temperature values. This program also visualizes the results. To see the results of the other spawning points
-uncomment and comment some lines in the script. Running this will take quite some time. 
+uncomment and comment some lines in the script. Running this will take quite some time. The results of our runs can be found in the 'plots' directory. 
 '''
 
-from helpers.helpers_user_input import *
-from helpers.helpers_loop import *
-from helpers.helpers_plots import *
-from helpers.helpers_single_value import *
-import numpy as np
-from numba import njit, prange
-import matplotlib.pyplot as plt
-import sys
-from scipy.stats import sem
 import sys
 sys.path.append("..")
+from scipy.stats import sem
+import matplotlib.pyplot as plt
+from numba import njit, prange
+import numpy as np
+from helpers.helpers_single_value import *
+from helpers.helpers_plots import *
+from helpers.helpers_loop import *
+from helpers.helpers_user_input import *
 
 
 # Coordinates to test 3 varying spawning points (surface, edge, corner).
@@ -42,7 +41,7 @@ TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
-NUM_SIMS = 10
+NUM_SIMS = 100
 BATCH_SIZE = 1000
 
 # Number of times the particles loop without touching the cluster before breaking the loop.
@@ -188,7 +187,7 @@ def particle_loop(grid, ATTACH_PROB, DECAY_PROB, batch_size=1000):
     return m_history_3d, m_history_surf
 
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def monte_carlo(ATTACH_PROB, DECAY_PROB):
     '''
     This function runs the simulation a certain amount of times and returns the average
@@ -196,6 +195,7 @@ def monte_carlo(ATTACH_PROB, DECAY_PROB):
     '''
     history_3d = np.zeros((NUM_SIMS, DAYS))
     history_surf = np.zeros((NUM_SIMS, DAYS))
+    print(NUM_SIMS)
 
     for i in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
@@ -218,7 +218,9 @@ def main():
         temp = temp_list[i]
         TEMP = temp
         _, axes = plt.subplots(1, 2, figsize=(12, 5))
+        print("Temperature: ", TEMP)
         for rh in rh_list:
+            print("RH:", rh)
             RH = rh
             ATTACH_PROB = get_attach_prob(TEMP, RH)
             DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)

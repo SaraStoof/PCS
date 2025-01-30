@@ -1,12 +1,11 @@
 '''
-This file measures the average mold coverage for our 2D DLA model with varying temperatures and relative humidities. It then plots the results. 
+This file measures the average mold coverage for our 2D DLA model with varying TEMPeratures and relative humidities. It then plots the results. 
 The plots can be found in the 'plots' directory.
 '''
 
 import numpy as np
 from numba import njit, prange
 import matplotlib.pyplot as plt
-from scipy.stats import sem
 
 # This determines how the attach prob should be divided. Attach prob is proportional to Max M-value given conditions
 attach_prob_divisor = 100
@@ -25,15 +24,15 @@ GRID_SIZE = 100
 RADIUS = GRID_SIZE//2
 SEED = (GRID_SIZE // 2, GRID_SIZE // 2)  # Seed in the middle of the grid
 NUM_SIMS = 10
-Temp = 5
-RH = 100
+TEMP = 30
+RH = 97
 
 
-def attaching_prob(Temp, RH):
-    RH_crit = (-0.00267 * (Temp**3)) + (0.16*(Temp**2)) - (3.13*Temp) + 100
+def attaching_prob(TEMP, RH):
+    RH_crit = (-0.00267 * (TEMP**3)) + (0.16*(TEMP**2)) - (3.13*TEMP) + 100
     if(RH < RH_crit):
         return 0
-    # The maximum M-value for the given temperature and relative humidity
+    # The maximum M-value for the given TEMPerature and relative humidity
     M_max = 1+7*((RH_crit-RH)/(RH_crit-100))-2*((RH_crit - RH)/(RH_crit-100))**2
     # The above two formulas are from the paper "A mathematical model of mould growth on wooden material" by Hukka and Vitten 1999
     if(M_max < 0):
@@ -94,9 +93,6 @@ def decay_grid(DECAY_PROB, grid):
         distances[idx] = -1
 
 
-ATTACH_PROB = attaching_prob(Temp, RH)
-
-
 def get_decay_prob(ATTACH_PROB, decay_prob_multiplier, exponential_drop_off):
     # Using exponential function to calculate decay rate, such that changes in attach prob are "felt more"
     return np.exp(-ATTACH_PROB * exponential_drop_off) * decay_prob_multiplier
@@ -131,7 +127,6 @@ def mold_coverage(grid, grid_size=5):
 @njit
 def particle_loop(GRID_SIZE, grid, ATTACH_PROB, TIMESTEPS, DECAY_PROB, DAYS):
     Reached_edge = False
-    # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 20
     timesteps_per_day = int(TIMESTEPS/DAYS)
     m_history = np.zeros(DAYS)
@@ -209,40 +204,17 @@ def monte_carlo(GRID_SIZE, ATTACH_PROB, TIMESTEPS, NUM_SIMS, DECAY_PROB, DAYS):
 
     return aggr_grid/NUM_SIMS, mold_cov/NUM_SIMS, m_histories
 
+def main():
+    ATTACH_PROB = attaching_prob(TEMP, RH)
+    DECAY_PROB = get_decay_prob(ATTACH_PROB, decay_prob_multiplier, exponential_drop_off)
+    final_grid, mold_cov, m_histories = monte_carlo(GRID_SIZE, ATTACH_PROB, TIMESTEPS, NUM_SIMS, DECAY_PROB, DAYS)
+    print("Average mold coverage: ", mold_cov , "%")
+    print("M-value: ", coverage_to_m_value(mold_cov))
+    print("TEMPerature: "   , TEMP)
+    print("Relative Humidity: " , RH)
+    # Plot the result
+    plt.imshow(final_grid, cmap='Greens', interpolation='nearest')
+    plt.show()
 
-# Test the 2D model
-RH_list = [80, 90, 97, 100]
-temp_list = [5, 30]
-
-_, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-for idx, temp in enumerate(temp_list):
-    for rh in RH_list:
-
-        attach_prob = attaching_prob(temp, rh)
-        decay_prob = get_decay_prob(
-            attach_prob, decay_prob_multiplier, exponential_drop_off)
-
-        _, _, m_histories = monte_carlo(
-            GRID_SIZE, attach_prob, TIMESTEPS, NUM_SIMS, decay_prob, DAYS)
-
-        # Compute mean and confidence interval (95% CI)
-        mean_values = np.mean(m_histories, axis=0)
-        ci = 1.96 * sem(m_histories, axis=0)  # 95% confidence interval
-
-        # Plot mean curve
-        axes[idx].plot(mean_values, linestyle='-', label=f"RH = {rh}%")
-
-        # Plot confidence interval as shaded area
-        axes[idx].fill_between(range(len(mean_values)),
-                               mean_values - ci, mean_values + ci, alpha=0.2)
-
-        axes[idx].set_title(f"Average Mold Coverage for Temp = {temp}C and varying RH")
-        axes[idx].set_xlabel("Time (days)")
-        axes[idx].set_ylabel("Mold index")
-        axes[idx].legend()
-        axes[idx].grid(True)
-        axes[idx].legend()
-
-plt.tight_layout()
-plt.show()
+if __name__== "__main__":
+    main()

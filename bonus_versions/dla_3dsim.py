@@ -1,32 +1,36 @@
 '''
-The other main file for the simulation, uses the other helper functions to run the
-simulations put displays every timestep in realtime
+This file visualizes the simulation of dla_3d.py for each timestep. 
 '''
 
-import numpy as np
-from numba import njit, prange
-import matplotlib.pyplot as plt
-import time
 import sys
-from helpers.helpers_single_value import *
-from helpers.helpers_plots import *
-from helpers.helpers_loop import *
+sys.path.append("..")
 from helpers.helpers_user_input import *
+from helpers.helpers_loop import *
+from helpers.helpers_plots import *
+from helpers.helpers_single_value import *
+import time
+import matplotlib.pyplot as plt
+from numba import njit, prange
+import numpy as np
 
 TIMESTEPS_PER_DAY = 20
+DAYS = 6
+TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
 SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
-SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (False, False), (False, False), (False, True)
+SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (
+    False, False), (False, False), (False, True)
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
 NUM_SIMS = 5
 TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
+
+# Number of times the particles loop without touching the cluster before breaking the loop.
+# This value was found to be optimal after testing.
 NO_HITS_MAX = 5
-DAYS = 6
-TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 
 @njit(parallel=True)
@@ -77,11 +81,12 @@ def decay_grid(grid):
 
 
 @njit
-def loop_step(reached_edge, grid, particles, current_radius, no_hits_count):
+def loop_step(reached_edge, grid, particles, current_radius):
     '''
     Performs one step in the loop, returns the updated current_radius and a boolean
     checking if the edge has been reached
     '''
+    no_hits_count = 0
     while len(particles) > 0:
 
         particles = move(particles)
@@ -91,7 +96,7 @@ def loop_step(reached_edge, grid, particles, current_radius, no_hits_count):
 
         # check neighbors and update grid
         hits, p_indices = check_neighbor(particles, grid,
-                                             GRID_X, GRID_Y, GRID_Z, ATTACH_PROB)
+                                         GRID_X, GRID_Y, GRID_Z, ATTACH_PROB)
 
         # Break if particles have moved five turns with no hits.
         if len(hits) == 0:
@@ -129,7 +134,7 @@ def particle_loop(grid, sim_num, batch_size=1000):
 
     for t in range(TIMESTEPS):
         if t % TIMESTEPS_PER_DAY == 0:
-            #These things happen once a day
+            # These things happen once a day
             decay_grid(grid)
 
         # http://datagenetics.com/blog/january32020/index.html
@@ -165,12 +170,13 @@ def particle_loop(grid, sim_num, batch_size=1000):
         particles = in_bounds(particles, current_radius, SPAWN_X, SPAWN_Y, SPAWN_Z,
                               SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
-        no_hits_count = 0
-        current_radius, reached_edge = loop_step(reached_edge, grid, particles, current_radius, no_hits_count)
-        
+        current_radius, reached_edge = loop_step(
+            reached_edge, grid, particles, current_radius)
+
+        # Plot the 3D grid every timestep.
         ax.clear()
         x, y, z = np.where(grid > 0)
-        ax.scatter(x, y, z, c='goldenrod', s=GRID_X//
+        ax.scatter(x, y, z, c='goldenrod', s=GRID_X //
                    5, marker='s', edgecolor='forestgreen')
         ax.set_title(f"3D Mold Growth - Timestep {t+1}, Simulation number {sim_num+1}")
         ax.set_xlabel("X")
@@ -185,9 +191,12 @@ def particle_loop(grid, sim_num, batch_size=1000):
 
     return
 
+
 # Initialize Plot
 fig = plt.figure(figsize=(8, 6))
 ax = fig.add_subplot(111, projection='3d')
+
+
 def monte_carlo():
     '''
     This function runs the simulation a certain amount of times and returns the average
@@ -205,13 +214,13 @@ def monte_carlo():
 
         aggr_grid += grid
         mold_cov_3d += mold_coverage(grid)
-        
+
         mold_cov_surf += (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
                           + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
 
     aggr_grid = aggr_grid/NUM_SIMS
     mold_cov_3d = mold_cov_3d / NUM_SIMS
-    mold_cov_surf = mold_cov_surf/ NUM_SIMS
+    mold_cov_surf = mold_cov_surf / NUM_SIMS
     return aggr_grid, mold_cov_3d, mold_cov_surf
 
 
@@ -246,7 +255,6 @@ def plot_slices(grid):
             plt.tight_layout()
 
     plt.show()
-
 
 
 def visualize(final_grid, mold_cov_3d, mold_cov_surface):
@@ -303,12 +311,14 @@ def main():
         TEMP = int(sys.argv[3])
         RH = int(sys.argv[4])
     else:
-        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ", NUM_SIMS, BATCH_SIZE, TEMP, RH)
+        print("Not enough arguments. Defaulting to NUM_SIMS, BATCH_SIZE, TEMP, RH: ",
+              NUM_SIMS, BATCH_SIZE, TEMP, RH)
     ATTACH_PROB = get_attach_prob(TEMP, RH)
     DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
 
     GRID_X, GRID_Y, GRID_Z, MAX_RADIUS = ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS)
-    SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = ask_spawn_point(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
+    SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = ask_spawn_point(
+        GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
     start = time.time()
     final_grid, mold_cov_3d, mold_cov_surf = monte_carlo()

@@ -15,6 +15,8 @@ from helpers.helpers_loop import *
 from helpers.helpers_user_input import *
 
 TIMESTEPS_PER_DAY = 15
+DAYS = 10
+TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
@@ -24,8 +26,6 @@ TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
 NO_HITS_MAX = 5
-DAYS = 10
-TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 
 @njit(parallel=True)

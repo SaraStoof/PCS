@@ -1,6 +1,5 @@
 '''
-This file was used to test spawning multiple seeds at the same time and plots
-the mold coverage index against time in days. The plots can be found in the 'plots' directory.
+This file spawns a given amount of random seeds in the grid. 
 '''
 
 import sys
@@ -8,7 +7,6 @@ sys.path.append("..")
 import matplotlib.pyplot as plt
 from numba import njit, prange
 import numpy as np
-from scipy.stats import sem
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
@@ -26,7 +24,6 @@ BATCH_SIZE = 1000
 NO_HITS_MAX = 5
 DAYS = 10
 TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
-
 
 
 @njit(parallel=True)
