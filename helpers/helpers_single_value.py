@@ -46,8 +46,8 @@ def get_decay_prob(ATTACH_PROB, decay_prob_multiplier, exp_dropoff):
 @njit(parallel=True, cache=True)
 def mold_coverage(grid, grid_size = 5):
     '''
-    This function takes a grid and calculates how much mold covers the surface of
-    the grid.
+    This function takes a grid and calculates how much mold covers the
+    the grid using grid sampling.
     '''
     # Uses grid sampling to smarter estimate mold coverage.
     # Divides the grid into 10x10 squares and counts the number of squares with mold.
@@ -61,7 +61,7 @@ def mold_coverage(grid, grid_size = 5):
 
     for i in prange(cells_y):
         for j in prange(cells_x):
-            for k in prange(cells_y):
+            for k in prange(cells_z):
                 # Extract grid cell
                 cell = grid[i * grid_size:(i + 1) * grid_size,
                             j * grid_size:(j + 1) * grid_size,
@@ -94,9 +94,9 @@ def mold_cov_surface(grid, grid_size = 5):
             # Check if there's any mold in the cell
             if np.any(cell > 0):  # Assuming mold is white (255) and background is black (0)
                 covered_cells += 1
-    if covered_cells == 1: 
+    if covered_cells == 1:
         return 0
-    
+
     return (covered_cells / total_cells) * 100
 
 @njit(cache=True)
