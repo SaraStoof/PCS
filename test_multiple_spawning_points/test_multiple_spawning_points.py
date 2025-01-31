@@ -1,35 +1,30 @@
 '''
-The main file for the simulation, uses the other helper functions to run the simulations
+This file was used to test spawning multiple seeds at the same time and plots
+the mold coverage index against time in days. The plots can be found in the 'plots' directory.
 '''
 
-import numpy as np
-from numba import njit, prange
-import matplotlib.pyplot as plt
-import time
 import sys
+sys.path.append("..")
+import matplotlib.pyplot as plt
+from numba import njit, prange
+import numpy as np
+from scipy.stats import sem
 from helpers.helpers_single_value import *
 from helpers.helpers_plots import *
 from helpers.helpers_loop import *
 from helpers.helpers_user_input import *
-from scipy.stats import sem
 
-TIMESTEPS_PER_DAY = 20
-DAYS = 6
+TIMESTEPS_PER_DAY = 15
+DAYS = 10
 TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
 
 GRID_X, GRID_Y, GRID_Z = 100, 100, 100  # The max index of each axis
-SPAWN_X, SPAWN_Y, SPAWN_Z = 50, 50, 100  # Ask user. Limit to surface point
-SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = (
-    False, False), (False, False), (False, True)
 MAX_RADIUS = (min(GRID_X, GRID_Y, GRID_Z) // 2) + 5
 
-NUM_SIMS = 5
+NUM_SIMS = 10
 TEMP = 30
 RH = 97
 BATCH_SIZE = 1000
-
-# Number of times the particles loop without touching the cluster before breaking the loop.
-# This value was found to be optimal after testing.
 NO_HITS_MAX = 5
 
 
@@ -83,7 +78,7 @@ def decay_grid(grid):
 
 # This decorator tells Numba to compile this function using the JIT (just-in-time) compiler
 @njit
-def particle_loop(grid, batch_size=1000):
+def particle_loop(grid, SPAWN_X, SPAWN_Y, SPAWN_Z, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, batch_size=1000):
     '''
     This is the main loop of the simulation, it runs the simulation for mold growth for
     a certain amount of timesteps by making changes to the inputted grid
@@ -92,8 +87,6 @@ def particle_loop(grid, batch_size=1000):
     # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 5
     particle_count = 0
-
-    # To keep track of the mold growth per day
     m_history_3d = np.zeros(DAYS)
     m_history_surf = np.zeros(DAYS)
 
@@ -174,29 +167,45 @@ def particle_loop(grid, batch_size=1000):
     return m_history_3d, m_history_surf
 
 
-@njit(parallel=True)
-def monte_carlo():
+def monte_carlo(spawn_points):
     '''
-    This function runs the simulation a certain amount of times and returns the average
+    This function runs the simulation a certain amount of times for a certain amount of spawning points and returns the average
     grid and mold coverage
     '''
     aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
 
-    # To calculate mold coverage per day
+    # To calculate the mold_coverage per day.
+    m_cov_3d = np.zeros((NUM_SIMS, DAYS))
+    m_cov_surf = np.zeros((NUM_SIMS, DAYS))
     history_3d = np.zeros((NUM_SIMS, DAYS))
     history_surf = np.zeros((NUM_SIMS, DAYS))
 
-    for i in prange(NUM_SIMS):
+    for i in range(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
-        grid[SPAWN_X, SPAWN_Y, SPAWN_Z] = 1
-        history_3d[i], history_surf[i] = particle_loop(grid, BATCH_SIZE)
+        for _ in range(spawn_points):
+            # Initialize a random spawning point
+            point = np.random.randint(0, 101, size=3)
+            grid[point[0], point[1], point[2]] = 1
+            SPAWN_X, SPAWN_Y, SPAWN_Z = int(point[0]), int(point[1]), int(point[2])
+            SPAWN_ON_X_EDGE = (SPAWN_X == 0, SPAWN_X == GRID_X)
+            SPAWN_ON_Y_EDGE = (SPAWN_Y == 0, SPAWN_Y == GRID_Y)
+            SPAWN_ON_Z_EDGE = (SPAWN_Z == 0, SPAWN_Z == GRID_Z)
+            hist_3d, hist_surf = particle_loop(
+                grid, SPAWN_X, SPAWN_Y, SPAWN_Z, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, BATCH_SIZE)
+
+            # Aggregate the mold coverage of all the random spawning points per simulation
+            history_3d[i] += hist_3d
+            history_surf[i] += hist_surf
+            grid += grid
+
+        # Calculate the mold index.
+        m_cov_3d[i] = [coverage_to_m_value(history_3d[i, j]) for j in range(DAYS)]
+        m_cov_surf[i] = [coverage_to_m_value(history_surf[i, j]) for j in range(DAYS)]
 
         aggr_grid += grid
-
     aggr_grid = aggr_grid/NUM_SIMS
-
-    return aggr_grid, history_3d, history_surf
+    return aggr_grid, m_cov_3d, m_cov_surf
 
 
 def plot_slices(grid):
@@ -232,7 +241,7 @@ def plot_slices(grid):
     plt.show()
 
 
-def visualize(final_grid, mold_cov_3d, mold_cov_surface, sem_3d, sem_surf):
+def visualize(final_grid, mold_cov_3d, mold_cov_surface):
     '''
     This function visualizes the final output of the simulations, it first plots the
     number of particles per layer, then it plots the slices, afterwards it plots the
@@ -248,9 +257,7 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface, sem_3d, sem_surf):
     print("attach_prob:", ATTACH_PROB)
     print("decay_prob: ", DECAY_PROB)
     print("Average mold coverage: ", mold_cov_3d, "%")
-    print("Standard error mean of average mold coverage:", sem_3d)
     print("Average mold coverage surface: ", mold_cov_surface, "%")
-    print("Standard error mean of average mold coverage surface:", sem_surf)
     print("M-value: ", coverage_to_m_value(mold_cov_3d))
     print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
 
@@ -278,6 +285,48 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface, sem_3d, sem_surf):
     plt.show()
 
 
+def test_spawn():
+    '''
+    This function is used to measure and plot the mold coverage for varying amounts of mold coverage 
+    '''
+    _, axes = plt.subplots(1, 2, figsize=(12, 5))
+    spawn_list = [1, 2, 4, 6, 8]
+    titles = ['Average of Mold Coverage for Varying Amount of Spawning points',
+              'Average of Surface Mold Coverage for Varying Amount of Spawning points']
+
+    for i in spawn_list:
+        final_grid, m_cov_3d, m_cov_surf = monte_carlo(i)
+
+        # Was used to create the plots in the plots folder.
+        # visualize(final_grid, m_cov_3d, m_cov_surf)
+
+        # Calculate the mean and standard error mean
+        m_mean_3d = np.mean(m_cov_3d, axis=0)
+        m_mean_surf = np.mean(m_cov_surf, axis=0)
+        ci_3d = 1.96 * sem(m_cov_3d, axis=0)
+        ci_surf = 1.96 * sem(m_cov_surf, axis=0)
+
+        # Plot mean curve and confidence intervals for volume mold coverage
+        axes[0].plot(m_mean_3d, linestyle='-', label=f"Spawning points = {i}")
+        axes[0].fill_between(range(len(m_mean_3d)), m_mean_3d -
+                             ci_3d, m_mean_3d + ci_3d, alpha=0.2)
+
+        # Plotting mean and confidence intervals for surface mold coverage
+        axes[1].plot(m_mean_surf, linestyle='-', label=f"Spawning points = {i}")
+        axes[1].fill_between(range(len(m_mean_surf)), m_mean_surf -
+                             ci_surf, m_mean_surf + ci_surf, alpha=0.2)
+    for idx, ax in enumerate(axes):
+        ax.set_xlabel("Time (days)")
+        ax.set_ylabel("Mold index")
+        ax.legend()
+        ax.grid(True)
+        ax.set_title(titles[idx])
+        ax.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
     global NUM_SIMS, BATCH_SIZE, NO_HITS_MAX, TEMP, RH, ATTACH_PROB, DECAY_PROB
     global GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE, SPAWN_X, SPAWN_Y, SPAWN_Z
@@ -291,23 +340,7 @@ def main():
               NUM_SIMS, BATCH_SIZE, TEMP, RH)
     ATTACH_PROB = get_attach_prob(TEMP, RH)
     DECAY_PROB = get_decay_prob(ATTACH_PROB, 0.05, 10)
-
-    GRID_X, GRID_Y, GRID_Z, MAX_RADIUS = ask_grid_size(GRID_X, GRID_Y, GRID_Z, MAX_RADIUS)
-    SPAWN_X, SPAWN_Y, SPAWN_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE = ask_spawn_point(
-        GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
-
-    start = time.time()
-    final_grid, m_cov_3d, m_cov_surf = monte_carlo()
-    end = time.time()
-
-    print(f"Time taken: {end - start}")
-
-    mold_cov_3d = np.mean(m_cov_3d)
-    mold_cov_surf = np.mean(m_cov_surf)
-    sem_3d = sem(m_cov_3d.flatten())
-    sem_surf = sem(m_cov_surf.flatten())
-
-    visualize(final_grid, mold_cov_3d, mold_cov_surf, sem_3d, sem_surf)
+    test_spawn()
 
 
 if __name__ == "__main__":
