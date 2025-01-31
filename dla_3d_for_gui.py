@@ -17,9 +17,6 @@ TIMESTEPS_PER_DAY = 20
 NO_HITS_MAX = 5
 BATCH_SIZE = 1000
 
-# DAYS = 60
-# TIMESTEPS = DAYS * TIMESTEPS_PER_DAY
-
 
 @njit(parallel=True)
 def decay_grid(grid, decay_prob):
@@ -92,8 +89,6 @@ def particle_loop(grid, grid_x, grid_y, grid_z, spawn_x, spawn_y, spawn_z,
 
     max_radius = (min(grid_x, grid_y, grid_z) // 2) + 5
 
-
-
     for i in prange(timesteps):
         if i % TIMESTEPS_PER_DAY == 0:
             #These things happen once a day
@@ -162,6 +157,108 @@ def particle_loop(grid, grid_x, grid_y, grid_z, spawn_x, spawn_y, spawn_z,
 
             # Remove particles that already attached themselves to the cluster
             particles = remove_indices(particles, p_indices)
+
+
+
+
+
+
+@njit
+def loop_step(reached_edge, grid, particles, current_radius,
+              grid_x, grid_y, grid_z,
+              spawn_x, spawn_y, spawn_z, spawn_on_x_edge, spawn_on_y_edge, spawn_on_z_edge,
+              attach_prob, MAX_RADIUS
+              ):
+    '''
+    Performs one step in the loop, returns the updated current_radius and a boolean
+    checking if the edge has been reached
+    '''
+    no_hits_count = 0
+    while len(particles) > 0:
+
+        particles = move(particles)
+
+        particles = in_bounds(particles, current_radius,
+                              spawn_x, spawn_y, spawn_z,
+                              spawn_on_x_edge, spawn_on_y_edge, spawn_on_z_edge)
+
+
+        # check neighbors and update grid
+        hits, p_indices = check_neighbor(particles, grid, grid_x, grid_y, grid_z, attach_prob)
+
+        # Break if particles have moved five turns with no hits.
+        if len(hits) == 0:
+            no_hits_count += 1
+            if no_hits_count > NO_HITS_MAX:
+                break
+        else:
+            no_hits_count = 0
+
+        # Update grid
+        for hit in hits:
+            x, y, z = int(hit[0]), int(hit[1]), int(hit[2])
+            grid[x, y, z] = 1
+            dist_to_seed = np.linalg.norm(hit - np.array([spawn_x, spawn_y, spawn_z]))
+            if dist_to_seed >= current_radius - 1 and reached_edge == False:
+                current_radius += 5
+                if current_radius >= MAX_RADIUS:
+                    reached_edge = True
+
+        # Remove particless that already attached themselves to the cluster
+        particles = remove_indices(particles, p_indices)
+    return current_radius, reached_edge
+
+
+
+def one_batch_step(t, grid, temp, rh,
+                   grid_x, grid_y, grid_z,
+                   spawn_x, spawn_y, spawn_z,
+                   spawn_on_x_edge, spawn_on_y_edge, spawn_on_z_edge,
+                   current_radius=5, reached_edge=False, batch_size=1000):
+    '''
+    This is the main loop of the simulation, it runs the simulation for mold growth for
+    a certain amount of timesteps by making changes to the inputted grid
+    '''
+    attach_prob = get_attach_prob(temp, rh)
+    decay_prob = get_decay_prob(attach_prob, 0.05, 10)
+    max_radius = (min(grid_x, grid_y, grid_z) // 2) + 5
+
+
+    if t % TIMESTEPS_PER_DAY == 0:
+        decay_grid(grid, decay_prob)
+
+    theta = np.random.uniform(0, np.pi * 2, batch_size)
+    phi = np.random.uniform(np.pi, 2 * np.pi, batch_size)
+
+    # Initialize an empty array to hold the particles coordinates
+    particles = np.zeros((batch_size, 3))
+
+    if reached_edge == False:
+        particles[:, 0] = new_x_coords(theta, phi, current_radius, spawn_on_x_edge, spawn_x)
+        particles[:, 1] = new_y_coords(theta, phi, current_radius, spawn_on_y_edge, spawn_y)
+        particles[:, 2] = new_z_coords(phi, current_radius, spawn_on_z_edge, spawn_z)
+
+    else:
+        particles[:, 0] = (np.random.randint(0, grid_x, batch_size))
+        particles[:, 1] = (np.random.randint(0, grid_y, batch_size))
+        particles[:, 2] = (np.random.randint(0, grid_z, batch_size))
+
+    if len(particles) > current_radius**3:
+        particles = particles[:current_radius**3]
+
+    particles = np.floor(particles)
+
+    particles = in_bounds(particles, current_radius, spawn_x, spawn_y, spawn_z,
+                          spawn_on_x_edge, spawn_on_y_edge, spawn_on_z_edge)
+
+
+    current_radius, reached_edge = \
+        loop_step(reached_edge, grid, particles, current_radius,
+                  grid_x, grid_y, grid_z,
+                  spawn_x, spawn_y, spawn_z, spawn_on_x_edge, spawn_on_y_edge, spawn_on_z_edge,
+                  attach_prob, max_radius)
+
+    return current_radius, reached_edge, grid
 
 
 @njit(parallel=True)
