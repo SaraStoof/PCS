@@ -64,10 +64,10 @@ Apart from the main file `dla_3.py`we have bonus versions of our DLA model. Thes
 ## Simulation: ``bonus_versions/dla_3dsim.py``
 This version of the program visualizes the simulation of 'dla_3d.py' for each timestep.
 
-## Multiple Spawning points: ``bonus_version/dla_3d_spawning_points``
+## Multiple Spawning points: ``bonus_versions/dla_3d_spawning_points``
 This version of the program spawns a given amount of random seeds in the grid (multiple random spawning points).
 
-## 2D: ``bonus_version/dla_2d.py``
+## 2D: ``bonus_versions/dla_2d.py``
 This file is the 2D implementation of our DLA model.
 
 
