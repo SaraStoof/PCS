@@ -1,6 +1,5 @@
 '''
-This file measures the average mold coverage for our 2D DLA model with varying TEMPeratures and relative humidities. It then plots the results. 
-The plots can be found in the 'plots' directory.
+This file is the 2D version of our DLA model. 
 '''
 
 import numpy as np

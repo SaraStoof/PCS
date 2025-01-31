@@ -4,14 +4,15 @@ This file visualizes the simulation of dla_3d.py for each timestep.
 
 import sys
 sys.path.append("..")
-from helpers.helpers_user_input import *
-from helpers.helpers_loop import *
-from helpers.helpers_plots import *
-from helpers.helpers_single_value import *
-import time
-import matplotlib.pyplot as plt
-from numba import njit, prange
+from scipy.stats import sem
 import numpy as np
+from numba import njit, prange
+import matplotlib.pyplot as plt
+import time
+from helpers.helpers_single_value import *
+from helpers.helpers_plots import *
+from helpers.helpers_loop import *
+from helpers.helpers_user_input import *
 
 TIMESTEPS_PER_DAY = 20
 DAYS = 6
@@ -131,11 +132,16 @@ def particle_loop(grid, sim_num, batch_size=1000):
     # spawns particles closer to where the seed is, to speed up the program.
     current_radius = 5
     particle_count = 0
+    m_history_3d = np.zeros(DAYS)
+    m_history_surf = np.zeros(DAYS)
 
     for t in range(TIMESTEPS):
         if t % TIMESTEPS_PER_DAY == 0:
             # These things happen once a day
             decay_grid(grid)
+            m_history_3d[t // TIMESTEPS_PER_DAY] = mold_coverage(grid)
+            m_history_surf[t // TIMESTEPS_PER_DAY] = (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
+                                                      + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
 
         # http://datagenetics.com/blog/january32020/index.html
 
@@ -189,7 +195,7 @@ def particle_loop(grid, sim_num, batch_size=1000):
         plt.draw()
         plt.pause(0.1)
 
-    return
+    return m_history_3d, m_history_surf
 
 
 # Initialize Plot
@@ -203,25 +209,22 @@ def monte_carlo():
     grid and mold coverage
     '''
     aggr_grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
-    mold_cov_3d = 0
-    mold_cov_surf = 0
+
+    # To calculate mold coverage per day
+    history_3d = np.zeros((NUM_SIMS, DAYS))
+    history_surf = np.zeros((NUM_SIMS, DAYS))
 
     for i in prange(NUM_SIMS):
         # Initialize grid (plus 1 to account for 0-index)
         grid = np.zeros((GRID_X + 1, GRID_Y + 1, GRID_Z + 1))
         grid[SPAWN_X, SPAWN_Y, SPAWN_Z] = 1
-        particle_loop(grid, i, BATCH_SIZE)
+        history_3d[i], history_surf[i] = particle_loop(grid, i, BATCH_SIZE)
 
         aggr_grid += grid
-        mold_cov_3d += mold_coverage(grid)
-
-        mold_cov_surf += (mold_cov_surface(grid[:, :, GRID_Z]) + mold_cov_surface(grid[:, :, 0]) + mold_cov_surface(grid[GRID_Z, :, :])
-                          + mold_cov_surface(grid[0, :, :]) + mold_cov_surface(grid[:, GRID_Y, :]) + mold_cov_surface(grid[:, 0, :]))
 
     aggr_grid = aggr_grid/NUM_SIMS
-    mold_cov_3d = mold_cov_3d / NUM_SIMS
-    mold_cov_surf = mold_cov_surf / NUM_SIMS
-    return aggr_grid, mold_cov_3d, mold_cov_surf
+
+    return aggr_grid, history_3d, history_surf
 
 
 def plot_slices(grid):
@@ -257,7 +260,7 @@ def plot_slices(grid):
     plt.show()
 
 
-def visualize(final_grid, mold_cov_3d, mold_cov_surface):
+def visualize(final_grid, mold_cov_3d, mold_cov_surface, sem_3d, sem_surf):
     '''
     This function visualizes the final output of the simulations, it first plots the
     number of particles per layer, then it plots the slices, afterwards it plots the
@@ -274,7 +277,9 @@ def visualize(final_grid, mold_cov_3d, mold_cov_surface):
     print("attach_prob:", ATTACH_PROB)
     print("decay_prob: ", DECAY_PROB)
     print("Average mold coverage: ", mold_cov_3d, "%")
+    print("Standard error mean of average mold coverage:", sem_3d)
     print("Average mold coverage surface: ", mold_cov_surface, "%")
+    print("Standard error mean of average mold coverage surface:", sem_surf)
     print("M-value: ", coverage_to_m_value(mold_cov_3d))
     print("M-value surface: ", coverage_to_m_value(mold_cov_surface))
 
@@ -321,12 +326,17 @@ def main():
         GRID_X, GRID_Y, GRID_Z, MAX_RADIUS, SPAWN_ON_X_EDGE, SPAWN_ON_Y_EDGE, SPAWN_ON_Z_EDGE)
 
     start = time.time()
-    final_grid, mold_cov_3d, mold_cov_surf = monte_carlo()
+    final_grid, m_cov_3d, m_cov_surf = monte_carlo()
     end = time.time()
 
     print(f"Time taken: {end - start}")
 
-    visualize(final_grid, mold_cov_3d, mold_cov_surf)
+    mold_cov_3d = np.mean(m_cov_3d)
+    mold_cov_surf = np.mean(m_cov_surf)
+    sem_3d = sem(m_cov_3d.flatten())
+    sem_surf = sem(m_cov_surf.flatten())
+
+    visualize(final_grid, mold_cov_3d, mold_cov_surf, sem_3d, sem_surf)
 
 
 if __name__ == "__main__":
