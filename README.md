@@ -82,4 +82,21 @@ To try the GUI demo, navigate to the main directory of this repository and run:
 
 Then, open the provided localhost link (e.g., http://127.0.0.1:8050/).
 
-Tip: If port 8050 is in use by another program, use `lsof -i :8050` to identify the corresponding PID and kill that program with `kill -9 <PID>`.
+Tip: If port 8050 is in use by another program, use `lsof -i :8050` to identify the corresponding PID and kill that program with `kill -9 <PID
+
+# git-fame
+git-fame
+Processing: 100%|██████████████████████████████| 45/45 [00:01<00:00, 34.36file/s]
+Total commits: 78
+Total ctimes: 743
+Total files: 59
+Total loc: 31287
+| Author        |   loc |   coms |   fils |  distribution   |
+|:--------------|------:|-------:|-------:|:----------------|
+| prinsesishana | 19009 |      9 |      2 | 60.8/11.5/ 3.4  |
+| Ishana        | 10235 |     29 |     37 | 32.7/37.2/62.7  |
+| Sara Stoof    |   845 |     10 |      7 | 2.7/12.8/11.9   |
+| OskarLinke    |   582 |      8 |      2 | 1.9/10.3/ 3.4   |
+| windarmazzori |   441 |     16 |      9 | 1.4/20.5/15.3   |
+| SaraStoof     |   175 |      2 |      2 | 0.6/ 2.6/ 3.4   |
+| Windar        |     0 |      4 |      0 | 0.0/ 5.1/ 0.0   |
