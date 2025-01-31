@@ -42,7 +42,7 @@ Running ``dla_3d.py`` gives some data and a few plots as output.
 All data is outputted to ``stdin``. The first line prints the time taken to run the simulations. The second and third line print the attachment probability and decay probability, which are calculated using the user inputted ``TEMP`` and ``RH``. The fourth, fifth and sixth line show the mold coverage, where the sixth line shows the mold coverage only on the surface. The seventh and eighth line show the M-value, which is the mold index, a way of showing how much mold has grown.
 
 ## Plots
-The first plot is the number of particles per layer. The second plot is a horizontal slice of the top layer.  The third plot is a vertical slice through the center. The last plot is a 3D plot of the average grid of every simulation run.
+The first plot is the number of particles per layer. The second plot show different slices among the axes. The last plot is a 3D plot of the average grid of every simulation run.
 
 # Instructions to Run the Tests
 ## Test 2D: ``2d_test/2d_test.py``
@@ -54,12 +54,20 @@ This test was performed on different spawning points (surface, edge, corner). It
 ## Test Speedup: ``test_speedup/test_speedup.py``
 This test is a script that executes our DLA implementation with varying parameters such as num_sims, batch_size and no_hits_max to identify the speedup Numba gives. The no_hits_max parameter determines how long the particles loop without touching the cluster before breaking the loop. We used the results from these tests to determine the optimal no_hits_max. We visualized our results by running our script ``test_speedup/visualize_speedup.py``. The resulting plots can be found in the 'test_speedup/plots' directory. 
 
-## Test Multiple Spawning Points
+## Test Multiple Spawning Points: ``test_multiple_spawning_points/test_multiple_spawning_points.py``
+This file measures the average mold coverage when adding multiple random spawning points to the grid and visualizes the result. The resulting figures and plots can be found in the 'test_multiple_spawning_points/plots'.  
 
 
 # Intructions for Bonus Versions
-Apart from the main file `dla_3.py`we have bonus versions of our implementation. These versions include cool features we wanted to include. 
-## gui
-## sim
-## 2d
-## spawning points
+Apart from the main file `dla_3.py`we have bonus versions of our DLA model. These versions include cool features we wanted to include.
+
+## Simulation: ``bonus_versions/dla_3dsim.py``
+This version of the program visualizes the simulation of 'dla_3d.py' for each timestep. 
+
+## Multiple Spawning points: ``bonus_version/dla_3d_spawning_points``
+This version of the program spawns a given amount of random seeds in the grid (multiple random spawning points. 
+
+## GUI:
+
+## 2D: ``bonus_version/dla_2d.py``
+This file is the 2D implementation of our DLA model. 
